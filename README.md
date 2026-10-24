@@ -20,6 +20,8 @@ While a session is running, you can:
 
 The webcam and screen-sharing features are optional. Webcam attention is processed on your device, while screen images are sent to the backend for Gemma analysis only when you choose to share a screen. If you cancel the screen-sharing request, the focus timer can still run without AI check-ins.
 
+There is also a demo-mode feature (can toggle in top right) which lets you test different functions of the app, like levelling up Morrow or triggering jumpscares, for demonstration purposes, since a long pomodoro timer doesn't translate well for quick demonstrations.
+
 ## Local setup
 
 Requirements:
