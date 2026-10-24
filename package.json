@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "concurrently --kill-others --names frontend,backend \"npm --prefix frontend run dev\" \"npm --prefix backend run dev\"",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
