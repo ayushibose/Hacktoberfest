@@ -13,7 +13,7 @@ interface FocusMonitorProps {
   onScare?: () => void
 }
 
-export default function FocusMonitor({ isSessionActive, alertAfterSeconds = 5, horrorEnabled = true, onStatusChange, onAttentionChange, onConnectionChange, onScare }: FocusMonitorProps) {
+export default function FocusMonitor({ isSessionActive, alertAfterSeconds = 30, horrorEnabled = true, onStatusChange, onAttentionChange, onConnectionChange, onScare }: FocusMonitorProps) {
   const { videoRef, status, headDirection, headAngles, awaySeconds, cameraOn, loading, error, jumpscare, calibrated, trackingWarning, framesProcessed,
     startCamera, stopCamera, calibrate, dismissJumpscare } = useFaceTracking(isSessionActive, alertAfterSeconds)
   useEffect(() => {

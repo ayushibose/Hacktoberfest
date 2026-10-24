@@ -103,7 +103,7 @@ export function useScreenCapture({ goal, enabled = true, intervalMs = 30_000, ap
         lastScreenSignature.current = signature
       }
       const imageDataUrl = canvas.toDataURL('image/jpeg', 0.6)
-      const response = await fetch(`${apiUrl}/api/analyse-screen`, {
+      const response = await fetch(`${apiUrl.replace(/\/+$/, '')}/api/analyse-screen`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ goal, imageDataUrl }), signal: abort.signal,
       })

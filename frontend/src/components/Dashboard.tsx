@@ -9,7 +9,7 @@ import { CrawlingSpider, Spiderweb } from './HalloweenDecor'
 import { ZombieChase } from './ZombieChase'
 import FocusMonitor from './FocusMonitor'
 import JumpScare from './JumpScare'
-import { useScreenCapture } from '../hooks/useScreenCapture'
+import { useScreenCapture, type ScreenAnalysis } from '../hooks/useScreenCapture'
 import { useSoundEffects } from '../hooks/useSoundEffects'
 import { formatDuration, formatXp } from '../lib/studySession'
 const GhostPet = lazy(() => import('./GhostPet'))
@@ -41,7 +41,17 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
   const { state, status, xp, minutes, sessions } = session
   const [liveAttention, setLiveAttention] = useState<AttentionStatus>('unknown')
   const [liveCameraConnected, setLiveCameraConnected] = useState(false)
-  const screen = useScreenCapture({ goal: state.goal, enabled: status === 'running' })
+  const [screenDistraction, setScreenDistraction] = useState(false)
+  const handleScreenAnalysis = useCallback((analysis: ScreenAnalysis) => {
+    if (analysis.relevance === 'unrelated') setScreenDistraction(true)
+  }, [])
+  const screen = useScreenCapture({ goal: state.goal, enabled: status === 'running', onAnalysis: handleScreenAnalysis })
+  useEffect(() => {
+    if (status !== 'running' || !state.horror) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setScreenDistraction(false)
+    }
+  }, [state.horror, status])
   const attentionStatus = suppliedAttention ?? liveAttention
   const screenStatus: ScreenStatus = suppliedScreen ?? (screen.isAnalysing ? 'checking' : screen.isSharing ? screen.analysis?.relevance ?? 'not_checked' : 'not_checked')
   const [starting, setStarting] = useState(false)
@@ -216,6 +226,15 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
         <div className="demo-button-group"><span>Interactions</span><button onClick={pet}>Pet animation</button><button onClick={() => { setDemoCelebration(value => value + 1); pet(); play('complete') }}>Completion</button><button onClick={() => setDemoScare(true)}>Jumpscare</button></div>
         <label className="sound-control"><input type="checkbox" checked={soundEnabled} onChange={event => setSoundEnabled(event.target.checked)} /> Sound <input aria-label="Sound volume" type="range" min="0" max="1" step=".05" value={volume} onChange={event => setVolume(Number(event.target.value))} /></label>
       </section>}
+      <JumpScare
+        isOpen={screenDistraction && state.horror}
+        onClose={() => setScreenDistraction(false)}
+        onOpen={announceScare}
+        eyebrow="MORROW NOTICED"
+        title="That screen is off task."
+        description="Gemma detected content unrelated to your current goal. Close the distraction and get back to your study session."
+        face="⚠"
+      />
     </main>
     <footer>{session.storageAvailable ? 'Progress saved on this browser.' : 'Progress is kept in memory for this visit.'}</footer>
     <JumpScare isOpen={demoScare} onClose={() => setDemoScare(false)} onOpen={announceScare} />
