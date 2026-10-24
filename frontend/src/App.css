@@ -1,3 +1,109 @@
+.eyebrow {
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.screen-monitor {
+  display: grid;
+  gap: 16px;
+  margin-top: 32px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--social-bg);
+  text-align: left;
+}
+
+.screen-monitor__header,
+.screen-monitor__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.screen-monitor h2 {
+  margin: 0;
+}
+
+.screen-monitor label {
+  font-weight: 600;
+}
+
+.screen-monitor input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: inherit;
+  background: var(--accent-bg);
+}
+
+.screen-monitor button {
+  padding: 10px 14px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--accent-bg);
+  background: var(--accent);
+  cursor: pointer;
+}
+
+.screen-monitor button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+.sharing-badge {
+  color: var(--text-h);
+  font-size: 0.85rem;
+}
+
+.sharing-badge--active {
+  color: #228b57;
+}
+
+.screen-monitor__privacy {
+  margin: 0;
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.screen-monitor__error {
+  margin: 0;
+  color: #b42318;
+}
+
+.screen-monitor__preview {
+  width: 100%;
+  max-height: 280px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #111;
+}
+
+.analysis-result {
+  padding: 16px;
+  border-left: 4px solid var(--accent);
+  background: var(--accent-bg);
+}
+
+.analysis-result--unrelated {
+  border-left-color: #b42318;
+  background: #fff1f0;
+}
+
+.analysis-result p {
+  margin-bottom: 0;
+}
+
+.analysis-result ul {
+  margin-bottom: 0;
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
