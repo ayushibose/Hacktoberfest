@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useStudySession } from '../hooks/useStudySession'
 import { getMood, getProgression } from '../lib/ghostProgression'
@@ -7,7 +7,8 @@ import { StudyTimer } from './StudyTimer'
 import { TaskList } from './TaskList'
 import { CrawlingSpider, Spiderweb } from './HalloweenDecor'
 import FocusMonitor from './FocusMonitor'
-import { useScreenCapture } from '../hooks/useScreenCapture'
+import JumpScare from './JumpScare'
+import { useScreenCapture, type ScreenAnalysis } from '../hooks/useScreenCapture'
 import { formatDuration, formatXp } from '../lib/studySession'
 const GhostPet = lazy(() => import('./GhostPet'))
 
@@ -34,7 +35,17 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
   const { state, status, xp, minutes, sessions } = session
   const [liveAttention, setLiveAttention] = useState<AttentionStatus>('unknown')
   const [liveCameraConnected, setLiveCameraConnected] = useState(false)
-  const screen = useScreenCapture({ goal: state.goal, enabled: status === 'running' })
+  const [screenDistraction, setScreenDistraction] = useState(false)
+  const handleScreenAnalysis = useCallback((analysis: ScreenAnalysis) => {
+    if (analysis.relevance === 'unrelated') setScreenDistraction(true)
+  }, [])
+  const screen = useScreenCapture({ goal: state.goal, enabled: status === 'running', onAnalysis: handleScreenAnalysis })
+  useEffect(() => {
+    if (status !== 'running' || !state.horror) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setScreenDistraction(false)
+    }
+  }, [state.horror, status])
   const attentionStatus = suppliedAttention ?? liveAttention
   const screenStatus: ScreenStatus = suppliedScreen ?? (screen.isAnalysing ? 'checking' : screen.isSharing ? screen.analysis?.relevance ?? 'not_checked' : 'not_checked')
   const [starting, setStarting] = useState(false)
@@ -165,6 +176,14 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
       <section className="history" aria-labelledby="history-heading"><div className="history-heading"><h3 id="history-heading">Session history</h3><span>Latest {Math.min(5, sessions)} of {sessions}</span></div>
         {state.history.length === 0 ? <div className="empty-history"><p>No completed sessions yet.</p></div> : <ul>{[...state.history].reverse().slice(0, 5).map(item => <li key={item.id}><span className="history-check" aria-hidden="true">✓</span><div><strong>{item.task || 'Focus session'}</strong><time dateTime={item.completedAt}>{new Date(item.completedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div><span>{formatDuration(item.durationMinutes)}</span><span className="history-xp">+{formatXp(item.durationMinutes * 2)} XP</span></li>)}</ul>}
       </section>
+      <JumpScare
+        isOpen={screenDistraction && state.horror}
+        onClose={() => setScreenDistraction(false)}
+        eyebrow="MORROW NOTICED"
+        title="That screen is off task."
+        description="Gemma detected content unrelated to your current goal. Close the distraction and get back to your study session."
+        face="⚠"
+      />
       {demo && <section className="demo-controls" aria-label="Demo controls"><div><strong>Companion preview · demo mode</strong><p>Preview only. Your timer, XP and session history stay real.</p></div><label>Mood<select value={previewMood} onChange={event => setPreviewMood(event.target.value as GhostMood)}>{moods.map(value => <option key={value}>{value}</option>)}</select></label><label>Evolution<select value={previewStage} onChange={event => setPreviewStage(Number(event.target.value) as EvolutionStage)}><option value={1}>1 · Wisp</option><option value={2}>2 · Haunted</option><option value={3}>3 · Possessed</option></select></label><button onClick={() => { setDemoCelebration(value => value + 1); setReaction(value => value + 1) }}>Preview celebration</button></section>}
     </main>
     <footer>{session.storageAvailable ? 'Progress saved on this browser.' : 'Progress is kept in memory for this visit.'}</footer>
