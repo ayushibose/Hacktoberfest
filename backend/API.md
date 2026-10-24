@@ -1,4 +1,4 @@
-# GhostMode Backend API
+# PomoGhost Backend API
 
 The backend runs on port `3001` by default.
 

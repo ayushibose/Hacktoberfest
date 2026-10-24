@@ -14,5 +14,5 @@ app.get('/health', (_req, res) => {
 app.post('/api/analyse-screen', analyseScreen)
 
 app.listen(port, () => {
-  console.log(`GhostMode backend listening on port ${port}`)
+  console.log(`PomoGhost backend listening on port ${port}`)
 })

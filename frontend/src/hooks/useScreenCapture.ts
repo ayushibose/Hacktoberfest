@@ -41,6 +41,7 @@ export function useScreenCapture({ goal, enabled = true, intervalMs = 30_000, ap
   const generation = useRef(0)
   const requestRef = useRef(false)
   const controller = useRef<AbortController | null>(null)
+  const lastScreenSignature = useRef<string | null>(null)
   const analyseNowRef = useRef<() => Promise<void>>(() => Promise.resolve())
   const [isSharing, setIsSharing] = useState(false)
   const [isRequesting, setIsRequesting] = useState(false)
@@ -66,6 +67,7 @@ export function useScreenCapture({ goal, enabled = true, intervalMs = 30_000, ap
     setIsAnalysing(false)
     setPreviewUrl(null)
     setAnalysis(null)
+    lastScreenSignature.current = null
   }, [])
 
   const analyseNow = useCallback(async () => {
@@ -87,6 +89,19 @@ export function useScreenCapture({ goal, enabled = true, intervalMs = 30_000, ap
       const context = canvas.getContext('2d')
       if (!context) throw new Error('Unable to prepare the screen capture.')
       context.drawImage(video, 0, 0, canvas.width, canvas.height)
+      // Small quantised thumbnail: avoid paying for another model call when the
+      // shared view has not materially changed since the prior interval.
+      const fingerprint = document.createElement('canvas')
+      fingerprint.width = 32; fingerprint.height = 18
+      const fingerprintContext = fingerprint.getContext('2d', { willReadFrequently: true })
+      if (fingerprintContext) {
+        fingerprintContext.drawImage(canvas, 0, 0, fingerprint.width, fingerprint.height)
+        const pixels = fingerprintContext.getImageData(0, 0, fingerprint.width, fingerprint.height).data
+        let signature = ''
+        for (let index = 0; index < pixels.length; index += 16) signature += `${pixels[index] >> 5}${pixels[index + 1] >> 5}${pixels[index + 2] >> 5}`
+        if (signature === lastScreenSignature.current) { setIsAnalysing(false); controller.current = null; return }
+        lastScreenSignature.current = signature
+      }
       const imageDataUrl = canvas.toDataURL('image/jpeg', 0.6)
       const response = await fetch(`${apiUrl}/api/analyse-screen`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -161,6 +176,7 @@ export function useScreenCapture({ goal, enabled = true, intervalMs = 30_000, ap
     setIsAnalysing(false)
     setAnalysis(null)
     setError(null)
+    lastScreenSignature.current = null
   }, [goal])
   useEffect(() => {
     // Media tracks and their UI must stop together when the external session stops.

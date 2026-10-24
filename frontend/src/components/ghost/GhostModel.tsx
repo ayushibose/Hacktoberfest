@@ -60,6 +60,7 @@ export function GhostModel({ mood, stage, reaction, reducedMotion, horrorEnabled
   const root = useRef<THREE.Group>(null!)
   const face = useRef<THREE.Group>(null!)
   const eyes = useRef<THREE.Group>(null!)
+  const pupils = useRef<THREE.Group>(null!)
   const mouth = useRef<THREE.Mesh>(null!)
   const leftArm = useRef<THREE.Mesh>(null!)
   const rightArm = useRef<THREE.Mesh>(null!)
@@ -82,7 +83,8 @@ export function GhostModel({ mood, stage, reaction, reducedMotion, horrorEnabled
     if (a.reaction !== reaction) { a.reaction = reaction; a.petAt = t; if (mood === 'celebrating') a.started = t }
     if (t > a.nextBlink) { a.blinkAt = t; a.nextBlink = t + 3.1 + Math.random() * 3 }
     const celebration = mood === 'celebrating' && t - a.started < 3.8
-    const petting = t - a.petAt < 1.4
+    const petElapsed = t - a.petAt
+    const petting = petElapsed >= 0 && petElapsed < 1.4
     const cheerful = mood === 'happy' || celebration || petting
     const haunted = horrorEnabled && (mood === 'possessed' || mood === 'angry')
     const possessed = horrorEnabled && mood === 'possessed'
@@ -90,17 +92,22 @@ export function GhostModel({ mood, stage, reaction, reducedMotion, horrorEnabled
     const lerp = 1 - Math.exp(-dt * 5)
     const suspicious = mood === 'suspicious'
     const tilt = possessed ? -.62 : suspicious ? .29 : cheerful ? -.12 : .035
-    root.current.position.y = THREE.MathUtils.lerp(root.current.position.y, motion * (Math.sin(t * (cheerful ? 4.5 : 1.4)) * (cheerful ? .13 : .065) + (celebration ? .15 : 0)), lerp)
+    const petJump = petting ? Math.sin(Math.min(1, petElapsed / .7) * Math.PI) * .48 : 0
+    root.current.position.y = THREE.MathUtils.lerp(root.current.position.y, motion * (Math.sin(t * (cheerful ? 4.5 : 1.4)) * (cheerful ? .13 : .065) + (celebration ? .15 : 0) + petJump), lerp)
     root.current.rotation.z = THREE.MathUtils.lerp(root.current.rotation.z, tilt + Math.sin(t * 1.1) * .025 * motion, lerp)
     const turn = suspicious ? Math.sin(t * .35) * .035 * motion : hover.current ? Math.max(-.25, Math.min(.25, pointer.x * .3)) : Math.sin(t * .5) * .09 * motion
     // A brief, low-amplitude hesitation every few seconds; no flashing or rapid color changes.
     const hesitation = haunted && Math.sin(t * 1.4) > .96 ? Math.sin(t * 15) * .055 * motion : 0
-    root.current.rotation.y = THREE.MathUtils.lerp(root.current.rotation.y, turn + hesitation, lerp)
+    const petFlip = petting && !reducedMotion ? petElapsed / 1.4 * Math.PI * 2 : 0
+    root.current.rotation.y = THREE.MathUtils.lerp(root.current.rotation.y, turn + hesitation + petFlip, lerp)
     const size = [.86, .94, 1][stage - 1] * Math.min(1, canvasSize.width / 320, canvasSize.height / 325)
     root.current.scale.lerp(scale.setScalar(size), lerp)
     face.current.rotation.z = THREE.MathUtils.lerp(face.current.rotation.z, possessed ? -.2 : suspicious ? .045 : 0, lerp)
     const blink = !reducedMotion && t - a.blinkAt < .16 ? .12 : 1
     eyes.current.scale.y = THREE.MathUtils.lerp(eyes.current.scale.y, blink * (suspicious ? .48 : haunted ? .75 : cheerful ? 1.12 : 1), lerp * 1.5)
+    // The pupils are real scene geometry, placed in front of the eye whites and eased toward the canvas cursor.
+    pupils.current.position.x = THREE.MathUtils.lerp(pupils.current.position.x, THREE.MathUtils.clamp(pointer.x * .075, -.075, .075), lerp)
+    pupils.current.position.y = THREE.MathUtils.lerp(pupils.current.position.y, THREE.MathUtils.clamp(pointer.y * .052, -.052, .052), lerp)
     mouth.current.scale.y = THREE.MathUtils.lerp(mouth.current.scale.y, possessed ? 2.7 : mood === 'angry' ? -.9 : cheerful ? 1.4 : 1, lerp)
     mouth.current.scale.x = THREE.MathUtils.lerp(mouth.current.scale.x, possessed ? 1.35 : suspicious ? .8 : 1, lerp)
     leftBrow.current.rotation.z = THREE.MathUtils.lerp(leftBrow.current.rotation.z, haunted ? -.35 : suspicious ? .35 : .08, lerp)
@@ -125,12 +132,13 @@ export function GhostModel({ mood, stage, reaction, reducedMotion, horrorEnabled
     <group ref={face}>
       <group ref={eyes} position={[0, .48, .58]}>
         {[-1, 1].map(side => <group key={side} position={[side * .29, side === 1 ? -.025 : 0, 0]}>
-          <mesh scale={[stage === 1 ? .18 : .165, side === 1 ? .21 : .225, .09]}><sphereGeometry args={[1, 32, 24]} /><meshStandardMaterial ref={side === -1 ? eyeMaterial : otherEyeMaterial} color="#100b13" roughness={.11} metalness={.12} /></mesh>
+          <mesh scale={[stage === 1 ? .2 : .185, side === 1 ? .23 : .245, .075]}><sphereGeometry args={[1, 32, 24]} /><meshStandardMaterial color="#fff7ec" roughness={.18} metalness={.04} /></mesh>
         </group>)}
-        <group ref={glints}>{[-1, 1].map(side => <group key={side} position={[side * .29, side === 1 ? -.025 : 0, 0]}>
-          <mesh position={[-.045, .065, .085]} scale={[.046, .052, .015]}><sphereGeometry args={[1, 16, 12]} /><meshBasicMaterial color="#fff4e5" /></mesh>
-          <mesh position={[.04, -.055, .088]} scale={[.018, .022, .01]}><sphereGeometry args={[1, 12, 8]} /><meshBasicMaterial color="#ffb78d" /></mesh>
-        </group>)}</group>
+        <group ref={pupils}><group ref={glints}>{[-1, 1].map(side => <group key={side} position={[side * .29, side === 1 ? -.025 : 0, 0]}>
+          <mesh position={[0, 0, .085]} scale={[.095, .125, .035]}><sphereGeometry args={[1, 24, 18]} /><meshStandardMaterial ref={side === -1 ? eyeMaterial : otherEyeMaterial} color="#140b14" roughness={.08} metalness={.1} /></mesh>
+          <mesh position={[-.028, .043, .12]} scale={[.034, .04, .01]}><sphereGeometry args={[1, 16, 12]} /><meshBasicMaterial color="#fffdf6" /></mesh>
+          <mesh position={[.027, -.042, .12]} scale={[.012, .016, .01]}><sphereGeometry args={[1, 12, 8]} /><meshBasicMaterial color="#ffb78d" /></mesh>
+        </group>)}</group></group>
       </group>
       {[-1, 1].map(side => <mesh ref={side === -1 ? leftBrow : rightBrow} key={side} position={[side * .29, .79, .52]} scale={[.1, .012, .016]}><sphereGeometry args={[1, 16, 8]} /><meshStandardMaterial color="#50303c" /></mesh>)}
       {[-1, 1].map(side => <mesh key={side} position={[side * .47, .19, .51]} scale={[.11, .055, .028]} rotation={[0, side * .3, 0]}><sphereGeometry args={[1, 20, 12]} /><meshStandardMaterial color="#c18e86" transparent opacity={.45} /></mesh>)}

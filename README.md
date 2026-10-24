@@ -1,4 +1,7 @@
-# Hacktoberfest
+# PomoGhost
+
+PomoGhost is a Halloween Pomodoro dashboard with a Three.js companion, task list,
+optional on-device webcam attention checks, and opt-in Gemma screen check-ins.
 
 ## Run locally
 

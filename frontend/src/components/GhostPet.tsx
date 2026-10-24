@@ -13,22 +13,22 @@ function subscribeVisibility(callback: () => void) {
   document.addEventListener('visibilitychange', callback)
   return () => document.removeEventListener('visibilitychange', callback)
 }
-function Fallback() {
-  return <div className="ghost-fallback"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M5 31V15C5 0 27 0 27 15v16l-6-3-5 4-5-4Z" /><ellipse cx="12" cy="15" rx="2" ry="3" /><ellipse cx="21" cy="15" rx="2" ry="3" /></svg><p>Morrow’s 3D view is unavailable.</p><small>Your timer, tasks and progress still work.</small></div>
+function Fallback({ name = 'Morrow' }: { name?: string }) {
+  return <div className="ghost-fallback"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M5 31V15C5 0 27 0 27 15v16l-6-3-5 4-5-4Z" /><ellipse cx="12" cy="15" rx="2" ry="3" /><ellipse cx="21" cy="15" rx="2" ry="3" /></svg><p>{name}’s 3D view is unavailable.</p><small>Your timer, tasks and progress still work.</small></div>
 }
 class SceneBoundary extends Component<{ children: ReactNode }, { failed: boolean }> {
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
   render() { return this.state.failed ? <Fallback /> : this.props.children }
 }
-export default function GhostPet({ mood, stage, reaction = 0, horrorEnabled = false }: {
-  mood: GhostMood; stage: EvolutionStage; reaction?: number; horrorEnabled?: boolean
+export default function GhostPet({ name = 'Morrow', mood, stage, reaction = 0, horrorEnabled = false }: {
+  name?: string; mood: GhostMood; stage: EvolutionStage; reaction?: number; horrorEnabled?: boolean
 }) {
   const reducedMotion = useSyncExternalStore(subscribeMotion, () => window.matchMedia('(prefers-reduced-motion: reduce)').matches)
   const visible = useSyncExternalStore(subscribeVisibility, () => !document.hidden)
   const [lost, setLost] = useState(false)
-  return <div className="ghost-canvas" role="img" aria-label={`Morrow, a ${['Wisp', 'Haunted', 'Possessed'][stage - 1]} ghost, feeling ${mood}`}>
-    {lost ? <Fallback /> : <SceneBoundary><Canvas orthographic camera={{ position: [0, .2, 7], zoom: 92 }} dpr={[1, 1.5]}
+  return <div className="ghost-canvas" role="img" aria-label={`${name}, a ${['Wisp', 'Haunted', 'Possessed'][stage - 1]} ghost, feeling ${mood}`}>
+    {lost ? <Fallback name={name} /> : <SceneBoundary><Canvas orthographic camera={{ position: [0, .2, 7], zoom: 92 }} dpr={[1, 1.5]}
       frameloop={visible ? 'always' : 'never'} gl={{ alpha: true, antialias: true }} fallback={<Fallback />}
       onCreated={({ gl }) => { gl.domElement.addEventListener('webglcontextlost', () => setLost(true), { once: true }) }}>
       <ambientLight intensity={1.1} color="#dfd0df" />

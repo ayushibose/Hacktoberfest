@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { useStudySession } from '../hooks/useStudySession'
 import { getMood, getProgression } from '../lib/ghostProgression'
@@ -6,8 +6,11 @@ import type { AttentionStatus, EvolutionStage, GhostMood, ScreenStatus, SessionS
 import { StudyTimer } from './StudyTimer'
 import { TaskList } from './TaskList'
 import { CrawlingSpider, Spiderweb } from './HalloweenDecor'
+import { ZombieChase } from './ZombieChase'
 import FocusMonitor from './FocusMonitor'
+import JumpScare from './JumpScare'
 import { useScreenCapture } from '../hooks/useScreenCapture'
+import { useSoundEffects } from '../hooks/useSoundEffects'
 import { formatDuration, formatXp } from '../lib/studySession'
 const GhostPet = lazy(() => import('./GhostPet'))
 
@@ -28,6 +31,10 @@ const moodCopy: Record<GhostMood, string> = {
   angry: 'Morrow is angry. Back to your task.', possessed: 'Morrow has lost their composure.', celebrating: 'Session complete. Morrow approves.',
 }
 const moods: GhostMood[] = ['idle', 'happy', 'suspicious', 'angry', 'possessed', 'celebrating']
+const GHOST_NAME_KEY = 'pomoghost:companion-name'
+const loadGhostName = () => {
+  try { return (localStorage.getItem(GHOST_NAME_KEY) || 'Morrow').trim().slice(0, 24) || 'Morrow' } catch { return 'Morrow' }
+}
 
 export function Dashboard({ attentionStatus: suppliedAttention, attentionConnected, screenStatus: suppliedScreen, focusMonitor, screenMonitor, onGoalChange, onMoodChange, onHorrorChange, onSessionStatusChange }: DashboardProps) {
   const session = useStudySession()
@@ -51,10 +58,15 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
       if (state.duration === 0) screen.stopSharing()
     } finally { startingRef.current = false; setStarting(false) }
   }
-  const evolution = getProgression(xp)
-  const [demo] = useState(() => new URLSearchParams(window.location.search).get('demo') === '1')
+  const [demo, setDemo] = useState(() => new URLSearchParams(window.location.search).get('demo') === '1')
   const [previewMood, setPreviewMood] = useState<GhostMood>('idle')
   const [previewStage, setPreviewStage] = useState<EvolutionStage>(1)
+  const [demoXp, setDemoXp] = useState(0)
+  const [demoScare, setDemoScare] = useState(false)
+  const [ghostName, setGhostName] = useState(loadGhostName)
+  const [editingName, setEditingName] = useState(false)
+  const [nameDraft, setNameDraft] = useState(ghostName)
+  const { enabled: soundEnabled, setEnabled: setSoundEnabled, volume, setVolume, play } = useSoundEffects()
   const [celebrating, setCelebrating] = useState(false)
   const [reaction, setReaction] = useState(0)
   const [demoCelebration, setDemoCelebration] = useState(0)
@@ -62,15 +74,18 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
   const [focusNotice, setFocusNotice] = useState('')
   const [xpEffect, setXpEffect] = useState(false)
   const [evolved, setEvolved] = useState(false)
-  const previousXp = useRef(xp)
+  const displayXp = demo ? demoXp : xp
+  const evolution = getProgression(displayXp)
+  const previousXp = useRef(displayXp)
   useEffect(() => {
-    if (xp <= previousXp.current) { previousXp.current = xp; return }
+    if (displayXp <= previousXp.current) { previousXp.current = displayXp; return }
     const changedStage = getProgression(previousXp.current).stage !== evolution.stage
-    previousXp.current = xp
+    previousXp.current = displayXp
     const start = window.setTimeout(() => { setXpEffect(true); setEvolved(changedStage) }, 0)
     const finish = window.setTimeout(() => { setXpEffect(false); setEvolved(false) }, 4200)
     return () => { clearTimeout(start); clearTimeout(finish) }
-  }, [xp, evolution.stage])
+  }, [displayXp, evolution.stage])
+  useEffect(() => { try { localStorage.setItem(GHOST_NAME_KEY, ghostName) } catch { /* persistence is optional */ } }, [ghostName])
   useEffect(() => {
     if (!focusNotice) return
     const timeout = window.setTimeout(() => setFocusNotice(''), 3500)
@@ -102,6 +117,19 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
     return () => { clearTimeout(start); clearTimeout(finish) }
   }, [demoCelebration])
   const mood = celebrating ? 'celebrating' : demo ? previewMood : getMood(status, attentionStatus, screenStatus, state.horror)
+  const unrelatedChecks = useRef(0)
+  useEffect(() => {
+    if (screen.analysis?.relevance === 'unrelated') unrelatedChecks.current += 1
+    else if (screen.analysis?.relevance === 'relevant') unrelatedChecks.current = 0
+    if (state.horror && unrelatedChecks.current >= 2) { unrelatedChecks.current = 0; setDemoScare(true) }
+  }, [screen.analysis, state.horror])
+  const pet = useCallback(() => { setReaction(value => value + 1); play('pet') }, [play])
+  const saveGhostName = () => {
+    const candidate = nameDraft.trim().slice(0, 24)
+    if (candidate) setGhostName(candidate)
+    else setNameDraft(ghostName)
+    setEditingName(false)
+  }
   useEffect(() => { onGoalChange?.(state.goal) }, [state.goal, onGoalChange])
   useEffect(() => { onMoodChange?.(mood) }, [mood, onMoodChange])
   useEffect(() => { onHorrorChange?.(state.horror) }, [state.horror, onHorrorChange])
@@ -113,11 +141,11 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
   const screenLabel = ({ not_checked: 'Not checked', relevant: 'Relevant', unrelated: 'Unrelated', uncertain: 'Uncertain', checking: 'Checking' })[screenStatus]
   const lastReward = (state.history.find(item => item.id === state.lastCompletedId)?.durationMinutes ?? 0) * 2
   return <div className="app-shell">
-    <Spiderweb className="page-web" />
+    <Spiderweb className="page-web page-web--tr" /><Spiderweb className="page-web page-web--tl" /><Spiderweb className="page-web page-web--br" /><Spiderweb className="page-web page-web--bl" /><ZombieChase />
     <header className="site-header">
-      <a className="wordmark" href={demo ? '?demo=1' : './'} aria-label="GhostMode home"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M5 31V15C5 0 27 0 27 15v16l-6-3-5 4-5-4Z" /><ellipse cx="12" cy="15" rx="2" ry="3" /><ellipse cx="21" cy="15" rx="2" ry="3" /></svg>Ghost<span>Mode</span></a>
+      <a className="wordmark" href={demo ? '?demo=1' : './'} aria-label="PomoGhost home"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M5 31V15C5 0 27 0 27 15v16l-6-3-5 4-5-4Z" /><ellipse cx="12" cy="15" rx="2" ry="3" /><ellipse cx="21" cy="15" rx="2" ry="3" /></svg>Pomo<span>Ghost</span></a>
       <h1>Stay focused. <span>Or get haunted.</span></h1>
-      <div className={`session-status ${status}`}><span />{status === 'running' ? 'Focus in progress' : status === 'paused' ? 'Session paused' : status === 'completed' ? 'Session complete' : 'Ready to focus'}</div>
+      <div className="header-actions"><button className={`demo-toggle ${demo ? 'active' : ''}`} onClick={() => setDemo(value => !value)} aria-pressed={demo}>{demo ? 'Exit demo' : 'Demo mode'}</button><div className={`session-status ${status}`}><span />{status === 'running' ? 'Focus in progress' : status === 'paused' ? 'Session paused' : status === 'completed' ? 'Session complete' : 'Ready to focus'}</div></div>
     </header>
     <main>
       {!session.storageAvailable && <p className="storage-notice" role="alert">Browser storage is unavailable. Your session still works, but progress may be lost when you close this page.</p>}
@@ -129,13 +157,13 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
           <div className="section-top"><span className="eyebrow">YOUR COMPANION</span><span className="stage-tag">{demo ? 'PREVIEW · ' : ''}{stageName}</span></div>
           <div className="portrait">
             <div className="portrait-arch" aria-hidden="true" />
-            <Suspense fallback={<div className="ghost-loading">Loading Morrow…</div>}><GhostPet mood={mood} stage={stage} reaction={reaction} horrorEnabled={state.horror || demo} /></Suspense>
+            <Suspense fallback={<div className="ghost-loading">Loading {ghostName}…</div>}><GhostPet name={ghostName} mood={mood} stage={stage} reaction={reaction} horrorEnabled={state.horror || demo} /></Suspense>
             <span className="portrait-floor" aria-hidden="true" />
           </div>
-          <div className="companion-name"><h2 id="companion-heading">Morrow</h2><span className="mood-label">{mood}</span></div>
-          <p className="companion-copy">{mood === 'idle' && status === 'running' ? 'Morrow is watching the timer.' : moodCopy[mood]}</p>
-          <button className="pet-button" onClick={() => setReaction(value => value + 1)}>Pet Morrow</button>
-          <div className={`evolution-progress ${xpEffect ? 'xp-gained' : ''}`}><div><span className="xp-total">{formatXp(xp)} <small>XP</small>{xpEffect && <span className="xp-reward">+{formatXp(lastReward)} XP</span>}</span><span>{evolution.next ? `${formatXp(evolution.next - xp)} XP to ${evolution.stage === 1 ? 'Haunted' : 'Possessed'}` : 'Final form unlocked'}</span></div>
+          <div className="companion-name">{editingName ? <input className="ghost-name-input" aria-label="Companion name" autoFocus maxLength={24} value={nameDraft} onChange={event => setNameDraft(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') saveGhostName(); if (event.key === 'Escape') { setNameDraft(ghostName); setEditingName(false) } }} onBlur={saveGhostName} /> : <><h2 id="companion-heading">{ghostName}</h2><button className="name-edit" aria-label={`Rename ${ghostName}`} onClick={() => { setNameDraft(ghostName); setEditingName(true) }}>✎</button></>}<span className="mood-label">{mood}</span></div>
+          <p className="companion-copy">{mood === 'idle' && status === 'running' ? `${ghostName} is watching the timer.` : moodCopy[mood].replaceAll('Morrow', ghostName)}</p>
+          <button className="pet-button" onClick={pet}>Pet {ghostName}</button>
+          <div className={`evolution-progress ${xpEffect ? 'xp-gained' : ''}`}><div><span className="xp-total">{formatXp(displayXp)} <small>XP</small>{xpEffect && <span className="xp-reward">+{formatXp(lastReward)} XP</span>}</span><span>{evolution.next ? `${formatXp(evolution.next - displayXp)} XP to ${evolution.stage === 1 ? 'Haunted' : 'Possessed'}` : 'Final form unlocked'}</span></div>
             <div className="xp-track" role="progressbar" aria-label="Evolution progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(evolution.progress)}><span style={{ width: `${evolution.progress}%` }} /></div>
             <div className="evolution-steps"><span className={evolution.stage >= 1 ? 'unlocked' : ''}>Wisp <small>0 XP</small></span><span className={evolution.stage >= 2 ? 'unlocked' : ''}>Haunted <small>100 XP</small></span><span className={evolution.stage >= 3 ? 'unlocked' : ''}>Possessed <small>300 XP</small></span></div>
             <span className="evolution-notice" role="status">{evolved ? `Evolved to ${evolution.name}!` : ''}</span>
@@ -144,7 +172,7 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
         <TaskList session={session} onFocusTask={id => void focusTask(id)} onDragTask={setDraggingTask} />
       <section className="monitoring-strip" aria-label="Focus monitoring">
         <div className="monitoring-title"><h2>Focus monitoring</h2><p>Camera is optional. Starting a session asks you to share a screen for Gemma check-ins.</p></div>
-        <div className={`monitor-item ${cameraConnected ? attentionStatus : 'disconnected'}`}><svg className="monitor-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="3" /><path d="m15 10 6-3v10l-6-3" /></svg><div><h3>Webcam attention</h3><p className="monitor-result"><span className="monitor-dot" />{attentionLabel}</p>{focusMonitor ?? <FocusMonitor isSessionActive={status === 'running'} horrorEnabled={state.horror} onAttentionChange={setLiveAttention} onConnectionChange={setLiveCameraConnected} />}</div></div>
+        <div className={`monitor-item ${cameraConnected ? attentionStatus : 'disconnected'}`}><svg className="monitor-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="3" /><path d="m15 10 6-3v10l-6-3" /></svg><div><h3>Webcam attention</h3><p className="monitor-result"><span className="monitor-dot" />{attentionLabel}</p>{focusMonitor ?? <FocusMonitor isSessionActive={status === 'running'} horrorEnabled={state.horror} onAttentionChange={setLiveAttention} onConnectionChange={setLiveCameraConnected} onScare={() => play('scare')} />}</div></div>
         <div className={`monitor-item ${screenStatus}`}><svg className="monitor-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4M8 10l3 3 5-5" /></svg><div><h3>AI screen analysis</h3><p className="monitor-result"><span className="monitor-dot" />{screenLabel}</p>{screenMonitor ?? <>
           <p className="monitor-help">{screen.isSharing ? 'Sharing active. Your selected screen is sent to Gemma every 30 seconds while the timer runs.' : screen.isRequesting ? 'Choose a screen in the browser permission window.' : status === 'running' ? 'Screen sharing is off. Share a screen to enable check-ins.' : 'Screen sharing stops when you pause or finish. Screen images are sent to Gemma for analysis.'}</p>
           <div className="monitor-actions">{screen.isSharing ? <><button onClick={screen.stopSharing}>Stop sharing</button><button disabled={screen.isAnalysing || !state.goal.trim()} onClick={() => void screen.analyseNow()}>{screen.isAnalysing ? 'Checking…' : 'Check now'}</button></> : <button disabled={status !== 'running' || screen.isRequesting} onClick={() => void screen.startSharing()}>{screen.isRequesting ? 'Awaiting permission…' : 'Share screen'}</button>}</div>
@@ -152,7 +180,7 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
           {screen.error && <p className="monitor-error" role="alert">{screen.error}</p>}
           {screen.isSharing && screen.analysis && <div className={`screen-feedback ${screen.analysis.relevance}`} role={screen.analysis.relevance === 'unrelated' ? 'alert' : 'status'}><strong>{screen.analysis.relevance === 'unrelated' ? 'Morrow noticed a distraction.' : screen.analysis.relevance === 'relevant' ? 'You’re on task.' : 'Morrow isn’t sure yet.'}</strong><p>{screen.analysis.explanation}</p>{screen.analysis.suggestions.length > 0 && <ul>{screen.analysis.suggestions.map((suggestion, index) => <li key={index}>{suggestion}</li>)}</ul>}</div>}
         </>}</div></div>
-        <label className="horror-toggle"><input type="checkbox" checked={state.horror} onChange={event => void session.dispatch({ type: 'horror', value: event.target.checked })} /><span><strong>Haunted reactions</strong><small>{state.horror ? 'On · Morrow can get angry' : 'Off · keep things friendly'}</small></span></label>
+        <div className="horror-row"><label className="horror-toggle"><input type="checkbox" checked={state.horror} onChange={event => void session.dispatch({ type: 'horror', value: event.target.checked })} /><span><strong>Haunted reactions</strong><small>{state.horror ? 'On · Morrow can get angry' : 'Off · keep things friendly'}</small></span></label><div className="horror-tests"><label className="sound-switch"><input type="checkbox" checked={soundEnabled} onChange={event => setSoundEnabled(event.target.checked)} /> Sound</label><button onClick={() => setDemoScare(true)}>Test jumpscare</button><button onClick={() => play('scare')}>Test sound</button></div></div>
       </section>
       </div>
       <section className="journal" aria-labelledby="journal-heading">
@@ -165,8 +193,17 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
       <section className="history" aria-labelledby="history-heading"><div className="history-heading"><h3 id="history-heading">Session history</h3><span>Latest {Math.min(5, sessions)} of {sessions}</span></div>
         {state.history.length === 0 ? <div className="empty-history"><p>No completed sessions yet.</p></div> : <ul>{[...state.history].reverse().slice(0, 5).map(item => <li key={item.id}><span className="history-check" aria-hidden="true">✓</span><div><strong>{item.task || 'Focus session'}</strong><time dateTime={item.completedAt}>{new Date(item.completedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div><span>{formatDuration(item.durationMinutes)}</span><span className="history-xp">+{formatXp(item.durationMinutes * 2)} XP</span></li>)}</ul>}
       </section>
-      {demo && <section className="demo-controls" aria-label="Demo controls"><div><strong>Companion preview · demo mode</strong><p>Preview only. Your timer, XP and session history stay real.</p></div><label>Mood<select value={previewMood} onChange={event => setPreviewMood(event.target.value as GhostMood)}>{moods.map(value => <option key={value}>{value}</option>)}</select></label><label>Evolution<select value={previewStage} onChange={event => setPreviewStage(Number(event.target.value) as EvolutionStage)}><option value={1}>1 · Wisp</option><option value={2}>2 · Haunted</option><option value={3}>3 · Possessed</option></select></label><button onClick={() => { setDemoCelebration(value => value + 1); setReaction(value => value + 1) }}>Preview celebration</button></section>}
+      {demo && <section className="demo-controls" aria-label="Simulated demo controls">
+        <div><strong>SIMULATED DEMO CONTROLS</strong><p>Preview values never overwrite your real timer, XP, webcam, or Gemma results.</p></div>
+        <label>Mood<select value={previewMood} onChange={event => setPreviewMood(event.target.value as GhostMood)}>{moods.map(value => <option key={value}>{value}</option>)}</select></label>
+        <label>Evolution<select value={previewStage} onChange={event => setPreviewStage(Number(event.target.value) as EvolutionStage)}><option value={1}>1 · Wisp</option><option value={2}>2 · Haunted</option><option value={3}>3 · Possessed</option></select></label>
+        <div className="demo-button-group"><span>Preview XP: {demoXp}</span><button onClick={() => { setDemoXp(value => value + 100); play('evolve') }}>+100 XP</button><button onClick={() => setDemoXp(0)}>Reset XP</button></div>
+        <div className="demo-button-group"><span>Simulated monitoring</span><button onClick={() => setPreviewMood('happy')}>Facing + on-task</button><button onClick={() => setPreviewMood('suspicious')}>Looking away</button><button onClick={() => setPreviewMood('angry')}>Unrelated screen</button><button onClick={() => setPreviewMood('idle')}>Uncertain</button></div>
+        <div className="demo-button-group"><span>Interactions</span><button onClick={pet}>Pet animation</button><button onClick={() => { setDemoCelebration(value => value + 1); pet(); play('complete') }}>Completion</button><button onClick={() => setDemoScare(true)}>Jumpscare</button></div>
+        <label className="sound-control"><input type="checkbox" checked={soundEnabled} onChange={event => setSoundEnabled(event.target.checked)} /> Sound <input aria-label="Sound volume" type="range" min="0" max="1" step=".05" value={volume} onChange={event => setVolume(Number(event.target.value))} /></label>
+      </section>}
     </main>
     <footer>{session.storageAvailable ? 'Progress saved on this browser.' : 'Progress is kept in memory for this visit.'}</footer>
+    <JumpScare isOpen={demoScare} onClose={() => setDemoScare(false)} onOpen={() => play('scare')} />
   </div>
 }

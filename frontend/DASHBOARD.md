@@ -1,4 +1,4 @@
-# GhostMode dashboard and monitoring
+# PomoGhost dashboard and monitoring
 
 ## Run locally
 

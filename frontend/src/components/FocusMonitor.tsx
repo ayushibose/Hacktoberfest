@@ -10,9 +10,10 @@ interface FocusMonitorProps {
   onStatusChange?: (status: FocusStatus) => void
   onAttentionChange?: (status: AttentionStatus) => void
   onConnectionChange?: (connected: boolean) => void
+  onScare?: () => void
 }
 
-export default function FocusMonitor({ isSessionActive, alertAfterSeconds = 5, horrorEnabled = true, onStatusChange, onAttentionChange, onConnectionChange }: FocusMonitorProps) {
+export default function FocusMonitor({ isSessionActive, alertAfterSeconds = 5, horrorEnabled = true, onStatusChange, onAttentionChange, onConnectionChange, onScare }: FocusMonitorProps) {
   const { videoRef, status, headDirection, headAngles, awaySeconds, cameraOn, loading, error, jumpscare, calibrated, trackingWarning, framesProcessed,
     startCamera, stopCamera, calibrate, dismissJumpscare } = useFaceTracking(isSessionActive, alertAfterSeconds)
   useEffect(() => {
@@ -41,6 +42,6 @@ export default function FocusMonitor({ isSessionActive, alertAfterSeconds = 5, h
       </>}
     </div>
     {cameraOn && <details className="tracking-details"><summary>Tracking details</summary><p>Frames processed: {framesProcessed}</p><p>Horizontal {headAngles.yaw.toFixed(1)}° · Vertical {headAngles.pitch.toFixed(1)}°</p><p>{calibrated ? 'Calibrated' : 'Not calibrated'} · {horrorEnabled ? `Haunted alert enabled at ${alertAfterSeconds}s away.` : 'Haunted reactions off — no fullscreen alert.'}</p></details>}
-    <JumpScare isOpen={jumpscare && horrorEnabled} onClose={dismissJumpscare} />
+    <JumpScare isOpen={jumpscare && horrorEnabled} onClose={dismissJumpscare} onOpen={onScare} />
   </div>
 }
