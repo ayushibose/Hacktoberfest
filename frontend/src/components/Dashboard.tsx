@@ -67,6 +67,7 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
   const [editingName, setEditingName] = useState(false)
   const [nameDraft, setNameDraft] = useState(ghostName)
   const { enabled: soundEnabled, setEnabled: setSoundEnabled, volume, setVolume, play } = useSoundEffects()
+  const [notificationPermission, setNotificationPermission] = useState<NotificationPermission | 'unsupported'>(() => typeof Notification === 'undefined' ? 'unsupported' : Notification.permission)
   const [celebrating, setCelebrating] = useState(false)
   const [reaction, setReaction] = useState(0)
   const [demoCelebration, setDemoCelebration] = useState(0)
@@ -124,6 +125,19 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
     if (state.horror && unrelatedChecks.current >= 2) { unrelatedChecks.current = 0; setDemoScare(true) }
   }, [screen.analysis, state.horror])
   const pet = useCallback(() => { setReaction(value => value + 1); play('pet') }, [play])
+  const enableDesktopAlerts = useCallback(async () => {
+    if (typeof Notification === 'undefined') return
+    const permission = await Notification.requestPermission()
+    setNotificationPermission(permission)
+  }, [])
+  const announceScare = useCallback(() => {
+    play('scare')
+    // Notifications are intentionally background-only: foreground users get the
+    // full visual alert, while another tab gets a concise desktop nudge.
+    if (document.hidden && typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      new Notification('PomoGhost noticed a distraction', { body: 'BOO! Your focus session is still running.', icon: '/ghost.svg', tag: 'pomoghost-scare' })
+    }
+  }, [play])
   const saveGhostName = () => {
     const candidate = nameDraft.trim().slice(0, 24)
     if (candidate) setGhostName(candidate)
@@ -172,7 +186,7 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
         <TaskList session={session} onFocusTask={id => void focusTask(id)} onDragTask={setDraggingTask} />
       <section className="monitoring-strip" aria-label="Focus monitoring">
         <div className="monitoring-title"><h2>Focus monitoring</h2><p>Camera is optional. Starting a session asks you to share a screen for Gemma check-ins.</p></div>
-        <div className={`monitor-item ${cameraConnected ? attentionStatus : 'disconnected'}`}><svg className="monitor-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="3" /><path d="m15 10 6-3v10l-6-3" /></svg><div><h3>Webcam attention</h3><p className="monitor-result"><span className="monitor-dot" />{attentionLabel}</p>{focusMonitor ?? <FocusMonitor isSessionActive={status === 'running'} horrorEnabled={state.horror} onAttentionChange={setLiveAttention} onConnectionChange={setLiveCameraConnected} onScare={() => play('scare')} />}</div></div>
+        <div className={`monitor-item ${cameraConnected ? attentionStatus : 'disconnected'}`}><svg className="monitor-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="3" /><path d="m15 10 6-3v10l-6-3" /></svg><div><h3>Webcam attention</h3><p className="monitor-result"><span className="monitor-dot" />{attentionLabel}</p>{focusMonitor ?? <FocusMonitor isSessionActive={status === 'running'} horrorEnabled={state.horror} onAttentionChange={setLiveAttention} onConnectionChange={setLiveCameraConnected} onScare={announceScare} />}</div></div>
         <div className={`monitor-item ${screenStatus}`}><svg className="monitor-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4M8 10l3 3 5-5" /></svg><div><h3>AI screen analysis</h3><p className="monitor-result"><span className="monitor-dot" />{screenLabel}</p>{screenMonitor ?? <>
           <p className="monitor-help">{screen.isSharing ? 'Sharing active. Your selected screen is sent to Gemma every 30 seconds while the timer runs.' : screen.isRequesting ? 'Choose a screen in the browser permission window.' : status === 'running' ? 'Screen sharing is off. Share a screen to enable check-ins.' : 'Screen sharing stops when you pause or finish. Screen images are sent to Gemma for analysis.'}</p>
           <div className="monitor-actions">{screen.isSharing ? <><button onClick={screen.stopSharing}>Stop sharing</button><button disabled={screen.isAnalysing || !state.goal.trim()} onClick={() => void screen.analyseNow()}>{screen.isAnalysing ? 'Checking…' : 'Check now'}</button></> : <button disabled={status !== 'running' || screen.isRequesting} onClick={() => void screen.startSharing()}>{screen.isRequesting ? 'Awaiting permission…' : 'Share screen'}</button>}</div>
@@ -180,7 +194,7 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
           {screen.error && <p className="monitor-error" role="alert">{screen.error}</p>}
           {screen.isSharing && screen.analysis && <div className={`screen-feedback ${screen.analysis.relevance}`} role={screen.analysis.relevance === 'unrelated' ? 'alert' : 'status'}><strong>{screen.analysis.relevance === 'unrelated' ? 'Morrow noticed a distraction.' : screen.analysis.relevance === 'relevant' ? 'You’re on task.' : 'Morrow isn’t sure yet.'}</strong><p>{screen.analysis.explanation}</p>{screen.analysis.suggestions.length > 0 && <ul>{screen.analysis.suggestions.map((suggestion, index) => <li key={index}>{suggestion}</li>)}</ul>}</div>}
         </>}</div></div>
-        <div className="horror-row"><label className="horror-toggle"><input type="checkbox" checked={state.horror} onChange={event => void session.dispatch({ type: 'horror', value: event.target.checked })} /><span><strong>Haunted reactions</strong><small>{state.horror ? 'On · Morrow can get angry' : 'Off · keep things friendly'}</small></span></label><div className="horror-tests"><label className="sound-switch"><input type="checkbox" checked={soundEnabled} onChange={event => setSoundEnabled(event.target.checked)} /> Sound</label><button onClick={() => setDemoScare(true)}>Test jumpscare</button><button onClick={() => play('scare')}>Test sound</button></div></div>
+        <div className="horror-row"><label className="horror-toggle"><input type="checkbox" checked={state.horror} onChange={event => void session.dispatch({ type: 'horror', value: event.target.checked })} /><span><strong>Haunted reactions</strong><small>{state.horror ? 'On · Morrow can get angry' : 'Off · keep things friendly'}</small></span></label><div className="horror-tests"><label className="sound-switch"><input type="checkbox" checked={soundEnabled} onChange={event => setSoundEnabled(event.target.checked)} /> Sound</label><button disabled={notificationPermission === 'unsupported' || notificationPermission === 'denied'} onClick={() => void enableDesktopAlerts()}>{notificationPermission === 'granted' ? 'Desktop alerts on' : notificationPermission === 'denied' ? 'Desktop alerts blocked' : 'Enable desktop alerts'}</button><button onClick={() => setDemoScare(true)}>Test jumpscare</button><button onClick={() => play('scare')}>Test sound</button></div></div>
       </section>
       </div>
       <section className="journal" aria-labelledby="journal-heading">
@@ -204,6 +218,6 @@ export function Dashboard({ attentionStatus: suppliedAttention, attentionConnect
       </section>}
     </main>
     <footer>{session.storageAvailable ? 'Progress saved on this browser.' : 'Progress is kept in memory for this visit.'}</footer>
-    <JumpScare isOpen={demoScare} onClose={() => setDemoScare(false)} onOpen={() => play('scare')} />
+    <JumpScare isOpen={demoScare} onClose={() => setDemoScare(false)} onOpen={announceScare} />
   </div>
 }
