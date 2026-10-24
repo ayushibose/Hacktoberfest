@@ -18,6 +18,8 @@ export default function FocusMonitor({
   const {
     videoRef,
     status,
+    headDirection,
+    headAngles,
     awaySeconds,
     cameraOn,
     loading,
@@ -28,7 +30,10 @@ export default function FocusMonitor({
     stopCamera,
     calibrate,
     dismissJumpscare,
-  } = useFaceTracking(isSessionActive, alertAfterSeconds);
+  } = useFaceTracking(
+    isSessionActive,
+    alertAfterSeconds
+  );
 
   useEffect(() => {
     onStatusChange?.(status);
@@ -36,71 +41,141 @@ export default function FocusMonitor({
 
   const labels: Record<FocusStatus, string> = {
     focused: "Facing screen (estimated)",
-    "looking-away": "Head turned away",
+    "looking-away": "Looking away",
     away: "No face detected",
-    "camera-off": "Camera disabled",
+    "camera-off": "Camera off",
+  };
+
+  const buttonStyle = {
+    padding: "10px 16px",
+    borderRadius: "8px",
+    border: "none",
+    color: "white",
+    fontWeight: 600 as const,
+    cursor: "pointer",
   };
 
   return (
-    <section className="rounded-2xl bg-slate-900 p-5 text-white">
-      <h2 className="mb-3 text-xl font-bold">
-        👁 Ghost Surveillance
-      </h2>
+    <section
+      style={{
+        background: "#171326",
+        color: "white",
+        padding: "24px",
+        borderRadius: "16px",
+        maxWidth: "500px",
+      }}
+    >
+      <h2>👻 Ghost Surveillance</h2>
 
       <video
         ref={videoRef}
         autoPlay
         muted
         playsInline
-        className="w-full max-w-sm scale-x-[-1] rounded-xl bg-black"
+        style={{
+          width: "100%",
+          maxWidth: "400px",
+          borderRadius: "12px",
+          background: "black",
+          transform: "scaleX(-1)",
+        }}
       />
 
-      <p className="mt-3">
-        Status: <strong>{labels[status]}</strong>
-      </p>
+      <div style={{ marginTop: "16px" }}>
+        <p>
+          <strong>Status:</strong>{" "}
+          {cameraOn && !calibrated
+            ? "Awaiting calibration"
+            : labels[status]}
+        </p>
 
-      <p>Looking away: {awaySeconds}s</p>
+        <p>
+          <strong>Head direction:</strong>{" "}
+          {headDirection}
+        </p>
 
-      <p className="text-sm text-gray-400">
-        Session: {isSessionActive ? "Active" : "Inactive"}
-      </p>
+        <p>
+          <strong>Horizontal rotation:</strong>{" "}
+          {headAngles.yaw.toFixed(1)}°
+        </p>
+
+        <p>
+          <strong>Vertical rotation:</strong>{" "}
+          {headAngles.pitch.toFixed(1)}°
+        </p>
+
+        <p>
+          <strong>Looking away:</strong>{" "}
+          {awaySeconds}s
+        </p>
+
+        <p>
+          <strong>Session:</strong>{" "}
+          {isSessionActive ? "Active" : "Inactive"}
+        </p>
+      </div>
 
       {error && (
-        <p className="mt-2 text-red-400">{error}</p>
+        <p style={{ color: "#ff8888" }}>
+          {error}
+        </p>
       )}
 
-      <div className="mt-4 flex flex-wrap gap-2">
-        {!cameraOn ? (
+      <div
+        style={{
+          display: "flex",
+          gap: "10px",
+          flexWrap: "wrap",
+          marginTop: "16px",
+        }}
+      >
+        {!cameraOn && !loading ? (
           <button
-            disabled={loading}
             onClick={startCamera}
-            className="rounded-lg bg-purple-600 px-4 py-2 disabled:opacity-50"
+            style={{
+              ...buttonStyle,
+              background: "#7c3aed",
+            }}
           >
-            {loading ? "Loading camera..." : "Enable Camera"}
+            Enable Camera
           </button>
         ) : (
           <>
-            <button
-              onClick={calibrate}
-              className="rounded-lg bg-blue-600 px-4 py-2"
-            >
-              Calibrate
-            </button>
+            {cameraOn && (
+              <button
+                onClick={calibrate}
+                style={{
+                  ...buttonStyle,
+                  background: "#2563eb",
+                }}
+              >
+                Calibrate
+              </button>
+            )}
 
             <button
               onClick={stopCamera}
-              className="rounded-lg bg-red-700 px-4 py-2"
+              style={{
+                ...buttonStyle,
+                background: "#b91c1c",
+              }}
             >
-              Stop Camera
+              {loading ? "Cancel" : "Stop Camera"}
             </button>
           </>
         )}
       </div>
 
       {cameraOn && (
-        <p className="mt-3 text-sm text-gray-300">
+        <p
+          style={{
+            marginTop: "12px",
+            fontSize: "14px",
+            color: "#cccccc",
+          }}
+        >
           {calibrated
-            ? "Calibration saved for this session."
+            ? "Calibration saved. Move your head to test detection."
             : "Face your screen normally, then click Calibrate."}
         </p>
       )}

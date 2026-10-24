@@ -9,26 +9,73 @@ const MODEL_URL =
 const WASM_URL =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.1.1/wasm";
 
+// Adjust these if detection is too sensitive or insensitive.
+const YAW_THRESHOLD = 17;
+const PITCH_THRESHOLD = 17;
 
-  export function useFaceTracking(
+type HeadPose = {
+  yaw: number;
+  pitch: number;
+};
+
+// Extract head orientation from MediaPipe's
+// column-major 4x4 transformation matrix.
+function getHeadPose(data: number[]): HeadPose | null {
+  if (data.length !== 16) return null;
+
+  // Third column represents the head's forward axis.
+  const x = data[8];
+  const y = data[9];
+  const z = data[10];
+
+  if (![x, y, z].every(Number.isFinite)) return null;
+  if (Math.hypot(x, y, z) < 0.001) return null;
+
+  const radiansToDegrees = 180 / Math.PI;
+
+  return {
+    yaw: Math.atan2(x, z) * radiansToDegrees,
+    pitch:
+      Math.atan2(-y, Math.hypot(x, z)) * radiansToDegrees,
+  };
+}
+
+export function useFaceTracking(
   isSessionActive: boolean,
   alertAfterSeconds = 120
 ) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const modelRef = useRef<FaceLandmarker | null>(null);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const intervalRef =
+    useRef<ReturnType<typeof setInterval> | null>(null);
 
   const runIdRef = useRef(0);
+  const loadingRef = useRef(false);
   const sessionRef = useRef(isSessionActive);
+  const thresholdRef = useRef(alertAfterSeconds);
+
+  const baselineRef = useRef<HeadPose | null>(null);
+  const currentPoseRef = useRef<HeadPose | null>(null);
+
   const awaySinceRef = useRef<number | null>(null);
   const alertedRef = useRef(false);
-  const baselineRef = useRef(0);
-  const offsetRef = useRef<number | null>(null);
+
   const badFramesRef = useRef(0);
   const goodFramesRef = useRef(0);
 
-  const [status, setStatus] = useState<FocusStatus>("camera-off");
+  const [status, setStatus] =
+    useState<FocusStatus>("camera-off");
+
+  const [headDirection, setHeadDirection] =
+    useState("Not calibrated");
+
+  const [headAngles, setHeadAngles] = useState({
+    yaw: 0,
+    pitch: 0,
+  });
+
   const [awaySeconds, setAwaySeconds] = useState(0);
   const [cameraOn, setCameraOn] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -47,15 +94,23 @@ const WASM_URL =
     }
   }, [isSessionActive]);
 
-  const stopCamera = useCallback(() => {
+  useEffect(() => {
+    thresholdRef.current = alertAfterSeconds;
+  }, [alertAfterSeconds]);
+
+  const cleanup = useCallback(() => {
     runIdRef.current++;
+    loadingRef.current = false;
 
     if (intervalRef.current !== null) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
     }
 
-    streamRef.current?.getTracks().forEach(track => track.stop());
+    streamRef.current
+      ?.getTracks()
+      .forEach(track => track.stop());
+
     streamRef.current = null;
 
     if (videoRef.current) {
@@ -65,32 +120,54 @@ const WASM_URL =
     modelRef.current?.close();
     modelRef.current = null;
 
+    baselineRef.current = null;
+    currentPoseRef.current = null;
     awaySinceRef.current = null;
+
     alertedRef.current = false;
-    offsetRef.current = null;
     badFramesRef.current = 0;
     goodFramesRef.current = 0;
-
-    setStatus("camera-off");
-    setAwaySeconds(0);
-    setCameraOn(false);
-    setLoading(false);
-    setJumpscare(false);
-    setCalibrated(false);
   }, []);
 
+  const stopCamera = useCallback(() => {
+    cleanup();
+
+    setCameraOn(false);
+    setLoading(false);
+    setCalibrated(false);
+    setStatus("camera-off");
+    setHeadDirection("Not calibrated");
+    setHeadAngles({ yaw: 0, pitch: 0 });
+    setAwaySeconds(0);
+    setJumpscare(false);
+    setError("");
+  }, [cleanup]);
+
   const startCamera = useCallback(async () => {
-    if (streamRef.current || modelRef.current) return;
+    if (
+      loadingRef.current ||
+      streamRef.current ||
+      modelRef.current
+    ) {
+      return;
+    }
 
     const runId = ++runIdRef.current;
+
+    loadingRef.current = true;
     setLoading(true);
     setError("");
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: 640, height: 480 },
-        audio: false,
-      });
+      const stream =
+        await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: "user",
+            width: { ideal: 640 },
+            height: { ideal: 480 },
+          },
+          audio: false,
+        });
 
       if (runId !== runIdRef.current) {
         stream.getTracks().forEach(track => track.stop());
@@ -100,18 +177,27 @@ const WASM_URL =
       streamRef.current = stream;
 
       const video = videoRef.current;
-      if (!video) throw new Error("Video element not ready");
+
+      if (!video) {
+        throw new Error("Video element unavailable");
+      }
 
       video.srcObject = stream;
       await video.play();
 
-      const vision = await FilesetResolver.forVisionTasks(WASM_URL);
+      const vision =
+        await FilesetResolver.forVisionTasks(WASM_URL);
 
-      const model = await FaceLandmarker.createFromOptions(vision, {
-        baseOptions: { modelAssetPath: MODEL_URL },
-        runningMode: "VIDEO",
-        numFaces: 1,
-      });
+      const model =
+        await FaceLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: MODEL_URL,
+            delegate: "CPU",
+          },
+          runningMode: "VIDEO",
+          numFaces: 1,
+          outputFacialTransformationMatrixes: true,
+        });
 
       if (runId !== runIdRef.current) {
         model.close();
@@ -124,8 +210,13 @@ const WASM_URL =
       let lastVideoTime = -1;
 
       intervalRef.current = setInterval(() => {
-        if (video.readyState < 2 || !modelRef.current) return;
-        if (video.currentTime === lastVideoTime) return;
+        if (!modelRef.current || video.readyState < 2) {
+          return;
+        }
+
+        if (video.currentTime === lastVideoTime) {
+          return;
+        }
 
         lastVideoTime = video.currentTime;
 
@@ -135,48 +226,107 @@ const WASM_URL =
         );
 
         const face = result.faceLandmarks[0];
-        let facingScreen = false;
+        const matrix =
+          result.facialTransformationMatrixes[0];
 
-        if (face) {
-          // Approximate left-right head rotation.
-          const leftEye = face[33];
-          const rightEye = face[263];
-          const nose = face[4];
+        const pose = matrix
+          ? getHeadPose(matrix.data)
+          : null;
 
-          const eyeMid = (leftEye.x + rightEye.x) / 2;
-          const eyeWidth = Math.abs(rightEye.x - leftEye.x);
+        currentPoseRef.current = pose;
 
-          if (eyeWidth > 0.001) {
-            const offset = (nose.x - eyeMid) / eyeWidth;
-            offsetRef.current = offset;
+        const baseline = baselineRef.current;
 
-            // Tune this threshold after testing.
-            facingScreen =
-              Math.abs(offset - baselineRef.current) < 0.16;
-          }
-        } else {
-          offsetRef.current = null;
+        // Do not monitor until calibration.
+        if (!baseline) {
+          setHeadDirection(
+            pose ? "Ready to calibrate" : "No face detected"
+          );
+          return;
         }
 
+        // Face detected but transformation unavailable:
+        // do not count uncertain frames as distraction.
+        if (face && !pose) {
+          setHeadDirection("Head position unavailable");
+          awaySinceRef.current = null;
+          badFramesRef.current = 0;
+          goodFramesRef.current = 0;
+          setAwaySeconds(0);
+          return;
+        }
+
+        let facingScreen = false;
+
+        if (pose) {
+          const yawDifference =
+            pose.yaw - baseline.yaw;
+
+          const pitchDifference =
+            pose.pitch - baseline.pitch;
+
+          const yaw = Math.abs(yawDifference);
+          const pitch = Math.abs(pitchDifference);
+
+          setHeadAngles({ yaw, pitch });
+
+          const turnedSideways =
+            yaw > YAW_THRESHOLD;
+
+          const tiltedVertically =
+            pitch > PITCH_THRESHOLD;
+
+          facingScreen =
+            !turnedSideways && !tiltedVertically;
+
+          if (turnedSideways && tiltedVertically) {
+            setHeadDirection(
+              "Head turned diagonally"
+            );
+          } else if (turnedSideways) {
+            setHeadDirection(
+              "Head turned left/right"
+            );
+          } else if (tiltedVertically) {
+            setHeadDirection(
+              "Head tilted up/down"
+            );
+          } else {
+            setHeadDirection(
+              "Facing screen"
+            );
+          }
+        } else {
+          setHeadDirection("No face detected");
+          setHeadAngles({ yaw: 0, pitch: 0 });
+        }
+
+        // Ignore brief tracking fluctuations.
         if (facingScreen) {
           goodFramesRef.current++;
           badFramesRef.current = 0;
 
           if (goodFramesRef.current >= 3) {
             setStatus("focused");
+
             awaySinceRef.current = null;
             alertedRef.current = false;
+
             setAwaySeconds(0);
           }
         } else {
           badFramesRef.current++;
           goodFramesRef.current = 0;
 
-          // Ignore very brief tracking errors.
-          if (badFramesRef.current < 4) return;
+          if (badFramesRef.current < 4) {
+            return;
+          }
 
-          setStatus(face ? "looking-away" : "away");
+          setStatus(
+            face ? "looking-away" : "away"
+          );
 
+          // Count distraction only during study sessions.
           if (sessionRef.current) {
             const now = Date.now();
 
@@ -190,7 +340,10 @@ const WASM_URL =
 
             setAwaySeconds(seconds);
 
-            if (seconds >= alertAfterSeconds && !alertedRef.current) {
+            if (
+              seconds >= thresholdRef.current &&
+              !alertedRef.current
+            ) {
               alertedRef.current = true;
               setJumpscare(true);
             }
@@ -198,37 +351,63 @@ const WASM_URL =
         }
       }, 250);
     } catch (err) {
-      if (runId !== runIdRef.current) return;
+      if (runId !== runIdRef.current) {
+        return;
+      }
 
-      stopCamera();
+      cleanup();
+      setCameraOn(false);
+      setLoading(false);
+
       setError(
-        err instanceof Error ? err.message : "Camera unavailable"
+        err instanceof Error
+          ? err.message
+          : "Could not start webcam"
       );
     } finally {
-      if (runId === runIdRef.current) setLoading(false);
+      if (runId === runIdRef.current) {
+        loadingRef.current = false;
+        setLoading(false);
+      }
     }
-  }, [alertAfterSeconds, stopCamera]);
+  }, [cleanup]);
 
-  function calibrate() {
-    if (offsetRef.current === null) return;
+  const calibrate = useCallback(() => {
+    const pose = currentPoseRef.current;
 
-    baselineRef.current = offsetRef.current;
+    if (!pose) {
+      setError(
+        "Face the camera before calibrating."
+      );
+      return;
+    }
+
+    baselineRef.current = { ...pose };
+
     awaySinceRef.current = null;
     alertedRef.current = false;
+
     badFramesRef.current = 0;
     goodFramesRef.current = 0;
 
     setCalibrated(true);
+    setStatus("focused");
+    setHeadDirection("Facing screen");
+    setHeadAngles({ yaw: 0, pitch: 0 });
     setAwaySeconds(0);
-  }
+    setJumpscare(false);
+    setError("");
+  }, []);
 
   useEffect(() => {
-    return () => stopCamera();
-  }, [stopCamera]);
+    return () => cleanup();
+  }, [cleanup]);
 
   return {
     videoRef,
     status,
+    headDirection,
+    headAngles,
     awaySeconds,
     cameraOn,
     loading,
@@ -238,6 +417,7 @@ const WASM_URL =
     startCamera,
     stopCamera,
     calibrate,
-    dismissJumpscare: () => setJumpscare(false),
+    dismissJumpscare: () =>
+      setJumpscare(false),
   };
 }
