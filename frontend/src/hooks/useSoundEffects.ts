@@ -10,6 +10,9 @@ export function useSoundEffects() {
   const [enabled, setEnabled] = useState(() => localStorage.getItem('pomoghost:sound') !== 'off')
   const [volume, setVolume] = useState(() => Number(localStorage.getItem('pomoghost:volume') ?? .45))
   const context = useRef<AudioContext | null>(null)
+  // Public assets must retain Vite's base path on GitHub Pages, where the app
+  // lives at /Hacktoberfest/ rather than the domain root.
+  const screamUrl = `${import.meta.env.BASE_URL}sounds/morrow-scream.mp3`
 
   const getContext = useCallback(() => {
     const audio = context.current ?? new AudioContext()
@@ -22,10 +25,10 @@ export function useSoundEffects() {
   useEffect(() => () => { void context.current?.close() }, [])
   useEffect(() => {
     const preload = document.createElement('link')
-    preload.rel = 'preload'; preload.as = 'audio'; preload.href = '/sounds/morrow-scream.mp3'
+    preload.rel = 'preload'; preload.as = 'audio'; preload.href = screamUrl
     document.head.append(preload)
     return () => preload.remove()
-  }, [])
+  }, [screamUrl])
   useEffect(() => {
     const unlock = () => { try { void getContext().resume() } catch { /* unavailable audio is non-fatal */ } }
     document.addEventListener('pointerdown', unlock, { once: true, capture: true })
@@ -37,7 +40,7 @@ export function useSoundEffects() {
     if (!enabled || volume <= 0) return
     try {
       if (effect === 'scare') {
-        const screamAsset = new Audio('/sounds/morrow-scream.mp3')
+        const screamAsset = new Audio(screamUrl)
         // Loud but not clipped or able to alter the user's system volume.
         screamAsset.volume = Math.max(.9, Math.min(1, Math.max(0, volume)))
         // This asset is bundled with the app; a user gesture unlocks audio at
@@ -67,7 +70,7 @@ export function useSoundEffects() {
     } catch {
       // Sound is enhancement only; keep the focus tools usable on locked-down browsers.
     }
-  }, [enabled, volume, getContext])
+  }, [enabled, volume, getContext, screamUrl])
 
   return { enabled, setEnabled, volume: Number.isFinite(volume) ? Math.min(1, Math.max(0, volume)) : .45, setVolume, play }
 }
