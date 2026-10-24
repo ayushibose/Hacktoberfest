@@ -1,0 +1,144 @@
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { useStudySession } from '../hooks/useStudySession'
+import { getMood, getProgression } from '../lib/ghostProgression'
+import type { AttentionStatus, EvolutionStage, GhostMood, ScreenStatus, SessionStatus } from '../types'
+import { StudyTimer } from './StudyTimer'
+import { TaskList } from './TaskList'
+import { CrawlingSpider, Spiderweb } from './HalloweenDecor'
+const GhostPet = lazy(() => import('./GhostPet'))
+
+export interface DashboardProps {
+  attentionStatus?: AttentionStatus
+  /** Distinguishes an unavailable camera from an unknown reading. */
+  attentionConnected?: boolean
+  screenStatus?: ScreenStatus
+  focusMonitor?: ReactNode
+  screenMonitor?: ReactNode
+  onGoalChange?: (goal: string) => void
+  onMoodChange?: (mood: GhostMood) => void
+  onHorrorChange?: (enabled: boolean) => void
+  onSessionStatusChange?: (status: SessionStatus) => void
+}
+const moodCopy: Record<GhostMood, string> = {
+  idle: 'Morrow is waiting for a focus session.', happy: 'Morrow is happy. Keep it up.', suspicious: 'Morrow is getting suspicious.',
+  angry: 'Morrow is angry. Back to your task.', possessed: 'Morrow has lost their composure.', celebrating: 'Session complete. Morrow approves.',
+}
+const moods: GhostMood[] = ['idle', 'happy', 'suspicious', 'angry', 'possessed', 'celebrating']
+
+export function Dashboard({ attentionStatus = 'unknown', attentionConnected, screenStatus = 'not_checked', focusMonitor, screenMonitor, onGoalChange, onMoodChange, onHorrorChange, onSessionStatusChange }: DashboardProps) {
+  const session = useStudySession()
+  const { state, status, xp, minutes, sessions } = session
+  const evolution = getProgression(xp)
+  const [demo] = useState(() => new URLSearchParams(window.location.search).get('demo') === '1')
+  const [previewMood, setPreviewMood] = useState<GhostMood>('idle')
+  const [previewStage, setPreviewStage] = useState<EvolutionStage>(1)
+  const [celebrating, setCelebrating] = useState(false)
+  const [reaction, setReaction] = useState(0)
+  const [demoCelebration, setDemoCelebration] = useState(0)
+  const [draggingTask, setDraggingTask] = useState<string | null>(null)
+  const [focusNotice, setFocusNotice] = useState('')
+  const [xpEffect, setXpEffect] = useState(false)
+  const [evolved, setEvolved] = useState(false)
+  const previousXp = useRef(xp)
+  useEffect(() => {
+    if (xp <= previousXp.current) { previousXp.current = xp; return }
+    const changedStage = getProgression(previousXp.current).stage !== evolution.stage
+    previousXp.current = xp
+    const start = window.setTimeout(() => { setXpEffect(true); setEvolved(changedStage) }, 0)
+    const finish = window.setTimeout(() => { setXpEffect(false); setEvolved(false) }, 4200)
+    return () => { clearTimeout(start); clearTimeout(finish) }
+  }, [xp, evolution.stage])
+  useEffect(() => {
+    if (!focusNotice) return
+    const timeout = window.setTimeout(() => setFocusNotice(''), 3500)
+    return () => clearTimeout(timeout)
+  }, [focusNotice])
+  async function focusTask(id: string) {
+    const task = state.tasks.find(item => item.id === id)
+    if (!task) return
+    await session.dispatch({ type: 'task-focus', id })
+    setDraggingTask(null)
+    setFocusNotice(`Selected: ${task.title}`)
+  }
+  const lastCompleted = useRef(state.lastCompletedId)
+  useEffect(() => {
+    if (!state.lastCompletedId) {
+      const reset = window.setTimeout(() => setCelebrating(false), 0)
+      return () => clearTimeout(reset)
+    }
+    if (state.lastCompletedId === lastCompleted.current) return
+    lastCompleted.current = state.lastCompletedId
+    const start = window.setTimeout(() => setCelebrating(true), 0)
+    const finish = window.setTimeout(() => setCelebrating(false), 4200)
+    return () => { clearTimeout(start); clearTimeout(finish) }
+  }, [state.lastCompletedId])
+  useEffect(() => {
+    if (!demoCelebration) return
+    const start = window.setTimeout(() => setCelebrating(true), 0)
+    const finish = window.setTimeout(() => setCelebrating(false), 4200)
+    return () => { clearTimeout(start); clearTimeout(finish) }
+  }, [demoCelebration])
+  const mood = celebrating ? 'celebrating' : demo ? previewMood : getMood(status, attentionStatus, screenStatus, state.horror)
+  useEffect(() => { onGoalChange?.(state.goal) }, [state.goal, onGoalChange])
+  useEffect(() => { onMoodChange?.(mood) }, [mood, onMoodChange])
+  useEffect(() => { onHorrorChange?.(state.horror) }, [state.horror, onHorrorChange])
+  useEffect(() => { onSessionStatusChange?.(status) }, [status, onSessionStatusChange])
+  const stage = demo ? previewStage : evolution.stage
+  const stageName = ['Wisp', 'Haunted', 'Possessed'][stage - 1]
+  const cameraConnected = attentionConnected ?? attentionStatus !== 'unknown'
+  const attentionLabel = !cameraConnected ? 'Not connected' : ({ unknown: 'Unknown', facing: 'Facing screen', away: 'Looking away' })[attentionStatus]
+  const screenLabel = ({ not_checked: 'Not checked', relevant: 'Relevant', unrelated: 'Unrelated', uncertain: 'Uncertain', checking: 'Checking' })[screenStatus]
+  const lastReward = (state.history.find(item => item.id === state.lastCompletedId)?.durationMinutes ?? 0) * 2
+  return <div className="app-shell">
+    <Spiderweb className="page-web" />
+    <header className="site-header">
+      <a className="wordmark" href={demo ? '?demo=1' : './'} aria-label="GhostMode home"><svg viewBox="0 0 32 36" aria-hidden="true"><path d="M5 31V15C5 0 27 0 27 15v16l-6-3-5 4-5-4Z" /><ellipse cx="12" cy="15" rx="2" ry="3" /><ellipse cx="21" cy="15" rx="2" ry="3" /></svg>Ghost<span>Mode</span></a>
+      <h1>Stay focused. <span>Or get haunted.</span></h1>
+      <div className={`session-status ${status}`}><span />{status === 'running' ? 'Focus in progress' : status === 'paused' ? 'Session paused' : status === 'completed' ? 'Session complete' : 'Ready to focus'}</div>
+    </header>
+    <main>
+      {!session.storageAvailable && <p className="storage-notice" role="alert">Browser storage is unavailable. Your session still works, but progress may be lost when you close this page.</p>}
+      {demo && <p className="storage-notice">Companion preview is on. Ghost moods and forms are a demo; your focus time and progress remain real.</p>}
+      <div className="study-room">
+        <StudyTimer session={session} draggingTask={draggingTask} onFocusTask={id => void focusTask(id)} onDragTask={setDraggingTask} focusNotice={focusNotice} />
+        <section className={`companion-panel mood-${mood} ${evolved ? 'just-evolved' : ''}`} aria-labelledby="companion-heading">
+          <Spiderweb className="companion-web" /><CrawlingSpider />
+          <div className="section-top"><span className="eyebrow">YOUR COMPANION</span><span className="stage-tag">{demo ? 'PREVIEW · ' : ''}{stageName}</span></div>
+          <div className="portrait">
+            <div className="portrait-arch" aria-hidden="true" />
+            <Suspense fallback={<div className="ghost-loading">Loading Morrow…</div>}><GhostPet mood={mood} stage={stage} reaction={reaction} horrorEnabled={state.horror || demo} /></Suspense>
+            <span className="portrait-floor" aria-hidden="true" />
+          </div>
+          <div className="companion-name"><h2 id="companion-heading">Morrow</h2><span className="mood-label">{mood}</span></div>
+          <p className="companion-copy">{mood === 'idle' && status === 'running' ? 'Morrow is watching the timer.' : moodCopy[mood]}</p>
+          <button className="pet-button" onClick={() => setReaction(value => value + 1)}>Pet Morrow</button>
+          <div className={`evolution-progress ${xpEffect ? 'xp-gained' : ''}`}><div><span className="xp-total">{xp} <small>XP</small>{xpEffect && <span className="xp-reward">+{lastReward} XP</span>}</span><span>{evolution.next ? `${evolution.next - xp} XP to ${evolution.stage === 1 ? 'Haunted' : 'Possessed'}` : 'Final form unlocked'}</span></div>
+            <div className="xp-track" role="progressbar" aria-label="Evolution progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(evolution.progress)}><span style={{ width: `${evolution.progress}%` }} /></div>
+            <div className="evolution-steps"><span className={evolution.stage >= 1 ? 'unlocked' : ''}>Wisp <small>0 XP</small></span><span className={evolution.stage >= 2 ? 'unlocked' : ''}>Haunted <small>100 XP</small></span><span className={evolution.stage >= 3 ? 'unlocked' : ''}>Possessed <small>300 XP</small></span></div>
+            <span className="evolution-notice" role="status">{evolved ? `Evolved to ${evolution.name}!` : ''}</span>
+          </div>
+        </section>
+        <TaskList session={session} onFocusTask={id => void focusTask(id)} onDragTask={setDraggingTask} />
+      <section className="monitoring-strip" aria-label="Focus monitoring">
+        <div className="monitoring-title"><h2>Focus monitoring</h2><p>Camera and screen sharing stay off until you connect them.</p></div>
+        <div className={`monitor-item ${cameraConnected ? attentionStatus : 'disconnected'}`}><svg className="monitor-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="12" height="12" rx="3" /><path d="m15 10 6-3v10l-6-3" /></svg><div><h3>Webcam attention</h3><p className="monitor-result"><span className="monitor-dot" />{attentionLabel}</p>{focusMonitor}</div></div>
+        <div className={`monitor-item ${screenStatus}`}><svg className="monitor-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="13" rx="2" /><path d="M8 21h8m-4-4v4M8 10l3 3 5-5" /></svg><div><h3>AI screen analysis</h3><p className="monitor-result"><span className="monitor-dot" />{screenLabel}</p>{screenMonitor}</div></div>
+        <label className="horror-toggle"><input type="checkbox" checked={state.horror} onChange={event => void session.dispatch({ type: 'horror', value: event.target.checked })} /><span><strong>Haunted reactions</strong><small>{state.horror ? 'On · Morrow can get angry' : 'Off · keep things friendly'}</small></span></label>
+      </section>
+      </div>
+      <section className="journal" aria-labelledby="journal-heading">
+        <div className="journal-heading"><h2 id="journal-heading">Your progress</h2></div>
+        <div className="stat"><span className="stat-value">{Math.floor(minutes / 60)}<small>h</small> {minutes % 60}<small>m</small></span><span>Total focus time</span></div>
+        <div className="stat"><span className="stat-value">{String(sessions).padStart(2, '0')}</span><span>Sessions completed</span></div>
+        <div className="stat"><span className="stat-value">{String(evolution.stage).padStart(2, '0')}<small>/ 03</small></span><span>{evolution.name} evolution</span></div>
+        <div className="stat"><span className="stat-value">{String(state.tasks.filter(task => task.completed).length).padStart(2, '0')}</span><span>Tasks completed</span></div>
+      </section>
+      <section className="history" aria-labelledby="history-heading"><div className="history-heading"><h3 id="history-heading">Session history</h3><span>Latest {Math.min(5, sessions)} of {sessions}</span></div>
+        {state.history.length === 0 ? <div className="empty-history"><p>No completed sessions yet.</p></div> : <ul>{[...state.history].reverse().slice(0, 5).map(item => <li key={item.id}><span className="history-check" aria-hidden="true">✓</span><div><strong>{item.task || 'Focus session'}</strong><time dateTime={item.completedAt}>{new Date(item.completedAt).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}</time></div><span>{item.durationMinutes} min</span><span className="history-xp">+{item.durationMinutes * 2} XP</span></li>)}</ul>}
+      </section>
+      {demo && <section className="demo-controls" aria-label="Demo controls"><div><strong>Companion preview · demo mode</strong><p>Preview only. Your timer, XP and session history stay real.</p></div><label>Mood<select value={previewMood} onChange={event => setPreviewMood(event.target.value as GhostMood)}>{moods.map(value => <option key={value}>{value}</option>)}</select></label><label>Evolution<select value={previewStage} onChange={event => setPreviewStage(Number(event.target.value) as EvolutionStage)}><option value={1}>1 · Wisp</option><option value={2}>2 · Haunted</option><option value={3}>3 · Possessed</option></select></label><button onClick={() => { setDemoCelebration(value => value + 1); setReaction(value => value + 1) }}>Preview celebration</button></section>}
+    </main>
+    <footer>{session.storageAvailable ? 'Progress saved on this browser.' : 'Progress is kept in memory for this visit.'}</footer>
+  </div>
+}
