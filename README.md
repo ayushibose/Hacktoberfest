@@ -1,26 +1,43 @@
-# PomoGhost
+# PomoGhost - Your Spooky Study Buddy (Halloween Edition)
+**PomoGhost** combines Pomodoro timers, a virtual pet and AI-powered screen analysis to make studying more productive and fun.
 
-## Try the deployed application
+### Try it live : [PomoGhost](https://ayushibose.github.io/PomoGhost/)
+<img width="700" height="350" alt="image" src="https://github.com/user-attachments/assets/83ece6f0-a6ad-44ab-a96e-61b0c9fbdb8a" />
 
-The current deployment is available at:
 
-https://ayushibose.github.io/Hacktoberfest/
+## Spooky Features 👻
 
-## How PomoGhost works
+### Study Timer & Task Management
+- Create, edit, complete, delete, and filter tasks.
+- Drag tasks onto the timer or enter a study goal manually.
+- Choose preset or custom session lengths, with pause, resume, and reset controls.
+- Track completed sessions, total study time, and XP earned.
 
-PomoGhost is a focused study workspace with a haunted companion called Morrow (or whatever you rename it). Create a task or type a goal, choose a preset or custom session length, and start the timer. You can pause, resume, cancel, or reset a session at any time. Completed sessions award XP, update your total focus time and completed-session count, and appear in your session history. Progress, tasks, and history are saved in your browser when storage is available.
+### Virtual Ghost Companion
+- Meet **Morrow**, your ghost companion who grows as you study.
+- Earn XP to evolve Morrow through **Wisp → Haunted → Possessed**.
+- Pet Morrow and watch its mood change based on your study activity.
 
-While a session is running, you can:
+### Webcam Focus Detection
+- Optional on-device head tracking using **MediaPipe**.
+- Calibrate your webcam to detect when you're facing away from the screen.
+- Looking away for too long can trigger spooky jumpscares and notifications.
 
-- Add, edit, complete, delete, filter, and reorder tasks by dragging one onto the timer to make it the current focus.
-- Watch Morrow react to your progress. Morrow evolves from Wisp to Haunted to Possessed as you earn XP, and you can pet the companion at any time.
-- Enable your webcam for optional on-device face tracking. Calibrate it to monitor whether you are facing the screen; the away timer can trigger a haunted alert when you look away for too long.
-- Share a screen for optional AI check-ins. The browser asks you to choose what to share, and Gemma checks the selected screen against your current goal every 30 seconds. You can also run a check manually, stop sharing, and view explanations or suggestions. Screen sharing stops when the session is paused or finished.
-- Turn haunted reactions on or off. With reactions enabled, Morrow can become suspicious or angry and can alert you when the webcam or screen analysis detects a distraction.
+### AI Screen Analysis
+- Optionally share a screen, window, or tab for analysis by **Gemma**.
+- Every 30 seconds, AI checks whether the visible content appears relevant to your study goal.
+- Receive feedback and suggestions, or manually select **Check Now**.
+- Screen sharing stops automatically when your session ends or pauses.
 
-The webcam and screen-sharing features are optional. Webcam attention is processed on your device, while screen images are sent to the backend for Gemma analysis only when you choose to share a screen. If you cancel the screen-sharing request, the focus timer can still run without AI check-ins.
+### Progress & Personalisation
+- View study history, completed sessions, total focus time, and ghost evolution.
+- Progress and tasks are saved locally in your browser.
+- Enable or disable haunted reactions and optional monitoring features.
 
-There is also a demo-mode feature (can toggle in top right) which lets you test different functions of the app, like levelling up Morrow or triggering jumpscares, for demonstration purposes, since a long pomodoro timer doesn't translate well for quick demonstrations.
+### Demo Mode
+Toggle **Demo Mode** in the top-right corner to instantly test ghost evolution, XP rewards, moods, and jumpscares without waiting for a full Pomodoro session.
+
+**Stay focused, grow your ghost, or prepare to be haunted! 👻**
 
 ## Local setup
 
