@@ -1,42 +1,20 @@
+import { useEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 
-interface JumpScareProps {
-  isOpen: boolean;
-  onClose: () => void;
-}
-
-export default function JumpScare({
-  isOpen,
-  onClose,
-}: JumpScareProps) {
-  if (!isOpen) return null;
-
-  return (
-    <div
-      role="alertdialog"
-      aria-modal="true"
-      aria-label="GhostMode distraction alert"
-      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-red-950 text-white"
-    >
-      <div className="animate-bounce text-9xl">👹</div>
-
-      <h1 className="mt-6 text-5xl font-black">
-        BOO!
-      </h1>
-
-      <p className="mt-4 text-center text-xl">
-        Your ghost caught you looking away!
-      </p>
-
-      <p className="mt-2 text-gray-300">
-        Your study session is still running.
-      </p>
-
-      <button
-        onClick={onClose}
-        className="mt-8 rounded-xl bg-white px-6 py-3 font-bold text-black"
-      >
-        I'm back!
-      </button>
-    </div>
-  );
+interface JumpScareProps { isOpen: boolean; onClose: () => void }
+export default function JumpScare({ isOpen, onClose }: JumpScareProps) {
+  const button = useRef<HTMLButtonElement>(null)
+  useEffect(() => {
+    if (!isOpen) return
+    const previous = document.activeElement
+    button.current?.focus()
+    return () => { if (previous instanceof HTMLElement) previous.focus() }
+  }, [isOpen])
+  if (!isOpen) return null
+  return createPortal(<div className="distraction-overlay" role="alertdialog" aria-modal="true" aria-labelledby="distraction-title" aria-describedby="distraction-description" onKeyDown={event => {
+    if (event.key === 'Escape') onClose()
+    if (event.key === 'Tab') { event.preventDefault(); button.current?.focus() }
+  }}>
+    <div className="distraction-dialog"><span className="distraction-face" aria-hidden="true">☠</span><span className="eyebrow">MORROW NOTICED</span><h2 id="distraction-title">BOO! Back to your task.</h2><p id="distraction-description">Your ghost caught you looking away. Your study session is still running.</p><button className="primary-button" ref={button} onClick={onClose}>I'm back!</button></div>
+  </div>, document.body)
 }

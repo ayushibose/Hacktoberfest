@@ -2,11 +2,18 @@ import type { FocusDuration, StudySession, TodoTask } from '../types/index.ts'
 
 export const STORAGE_KEY = 'ghostmode:v1'
 export const DURATIONS: FocusDuration[] = [15, 25, 45]
-export const MIN_DURATION = 5
+export const MIN_DURATION = 0
 export const MAX_DURATION = 180
 export const TASK_DRAG_TYPE = 'application/x-ghostmode-task'
 export const isValidDuration = (value: unknown): value is FocusDuration =>
-  typeof value === 'number' && Number.isInteger(value) && value >= MIN_DURATION && value <= MAX_DURATION
+  typeof value === 'number' && Number.isFinite(value) && value >= MIN_DURATION && value <= MAX_DURATION &&
+  Math.abs(value * 60 - Math.round(value * 60)) < 1e-8
+export const durationMs = (minutes: number) => Math.round(minutes * 60) * 1000
+export const formatDuration = (minutes: number) => {
+  const seconds = Math.round(minutes * 60)
+  return seconds % 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${seconds / 60} min`
+}
+export const formatXp = (xp: number) => Number(xp.toFixed(2)).toString()
 export interface CompletedSession extends StudySession { completed: true; completedAt: string }
 export interface ActiveSession {
   id: string; task: string; durationMinutes: FocusDuration; startedAt: string
@@ -37,7 +44,7 @@ export function restoreState(raw: string | null): StudyState {
     if (Array.isArray(value.history)) for (const item of value.history) {
       if (!record(item) || !id(item.id) || seen.has(item.id) || !isValidDuration(item.durationMinutes) ||
         item.completed !== true || typeof item.task !== 'string' || !date(item.startedAt) || !date(item.completedAt) ||
-        Date.parse(item.completedAt) - Date.parse(item.startedAt) < item.durationMinutes * 60_000) continue
+        Date.parse(item.completedAt) - Date.parse(item.startedAt) < durationMs(item.durationMinutes)) continue
       seen.add(item.id)
       state.history.push({ id: item.id, task: item.task.slice(0, 200), durationMinutes: item.durationMinutes,
         completed: true, startedAt: item.startedAt, completedAt: item.completedAt })
@@ -45,10 +52,10 @@ export function restoreState(raw: string | null): StudyState {
     const active = value.active
     if (record(active) && id(active.id) && !seen.has(active.id) && isValidDuration(active.durationMinutes) &&
       typeof active.task === 'string' && date(active.startedAt) && typeof active.remainingMs === 'number' &&
-      Number.isFinite(active.remainingMs) && active.remainingMs > 0 && active.remainingMs <= active.durationMinutes * 60_000 &&
+      Number.isFinite(active.remainingMs) && active.remainingMs >= 0 && active.remainingMs <= durationMs(active.durationMinutes) &&
       ((active.status === 'paused' && active.expiresAt === null) || (active.status === 'running' &&
         typeof active.expiresAt === 'number' && Number.isFinite(active.expiresAt) &&
-        active.expiresAt >= Date.parse(active.startedAt) + active.durationMinutes * 60_000))) {
+        active.expiresAt >= Date.parse(active.startedAt) + durationMs(active.durationMinutes)))) {
       state.active = { id: active.id, task: active.task.slice(0, 200), durationMinutes: active.durationMinutes,
         startedAt: active.startedAt, status: active.status, remainingMs: active.remainingMs, expiresAt: active.expiresAt as number | null }
     }
@@ -72,7 +79,7 @@ export function restoreState(raw: string | null): StudyState {
 
 export function remainingMs(state: StudyState, now: number) {
   return state.active ? state.active.status === 'running'
-    ? Math.max(0, state.active.expiresAt! - now) : state.active.remainingMs : state.duration * 60_000
+    ? Math.max(0, state.active.expiresAt! - now) : state.active.remainingMs : durationMs(state.duration)
 }
 
 export function settleSession(state: StudyState, now: number): StudyState {
@@ -94,9 +101,9 @@ export function reduceSession(input: StudyState, action: SessionAction, now: num
   const state = settleSession(input, now)
   const active = state.active
   switch (action.type) {
-    case 'start': return active ? state : { ...state, lastCompletedId: null, active: {
+    case 'start': return active ? state : settleSession({ ...state, lastCompletedId: null, active: {
       id: action.id, task: state.goal.trim(), durationMinutes: state.duration, startedAt: new Date(now).toISOString(),
-      status: 'running', remainingMs: state.duration * 60_000, expiresAt: now + state.duration * 60_000 } }
+      status: 'running', remainingMs: durationMs(state.duration), expiresAt: now + durationMs(state.duration) } }, now)
     case 'pause': return active?.status === 'running' ? { ...state, active: { ...active, status: 'paused', remainingMs: remainingMs(state, now), expiresAt: null } } : state
     case 'resume': return active?.status === 'paused' ? { ...state, active: { ...active, status: 'running', expiresAt: now + active.remainingMs } } : state
     case 'cancel': return active || state.lastCompletedId ? { ...state, active: null, lastCompletedId: null } : state

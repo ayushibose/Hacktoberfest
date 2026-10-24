@@ -24,7 +24,7 @@ export type ScreenStatus = 'relevant' | 'unrelated' | 'uncertain' | 'not_checked
 export type GhostMood = 'idle' | 'happy' | 'suspicious' | 'angry' | 'possessed' | 'celebrating';
 export type SessionStatus = 'idle' | 'running' | 'paused' | 'completed';
 export type EvolutionStage = 1 | 2 | 3;
-/** Whole minutes, validated at the storage/action boundary (5–180). */
+/** Minutes with whole-second precision, validated at the storage/action boundary (0–180). */
 export type FocusDuration = number;
 
 export interface TodoTask {

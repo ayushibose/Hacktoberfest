@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { getTotals, initialState, isValidDuration, reduceSession, remainingMs, restoreState, settleSession } from '../src/lib/studySession.ts'
+import { getTotals, initialState, isValidDuration, reduceSession, remainingMs, restoreState, settleSession, durationMs, formatDuration, formatXp } from '../src/lib/studySession.ts'
 import { getMood, getProgression } from '../src/lib/ghostProgression.ts'
 
 const startTime = Date.parse('2026-10-24T10:00:00Z')
@@ -74,12 +74,47 @@ test('evolution boundaries and independent mood mapping', () => {
 })
 
 test('invalid custom durations are rejected at the action and storage boundaries', () => {
-  for (const value of [-1, 0, 4, 181, 5.5, NaN, Infinity, -Infinity, '', '7', null]) {
+  for (const value of [-1, 181, 0.001, 180 + 1 / 60, NaN, Infinity, -Infinity, '', '7', null]) {
     assert.equal(isValidDuration(value), false)
     const state = initialState()
     assert.equal(reduceSession(state, { type: 'duration', value }, startTime), state)
     assert.equal(restoreState(JSON.stringify({ ...state, duration: value })).duration, 25)
   }
+})
+
+test('zero seconds completes immediately, persists, and never grants XP twice', () => {
+  const configured = reduceSession(initialState(), { type: 'duration', value: 0, custom: true }, startTime)
+  const completed = reduceSession(configured, { type: 'start', id: 'zero' }, startTime)
+  assert.equal(completed.active, null)
+  assert.equal(completed.history[0].durationMinutes, 0)
+  assert.deepEqual(getTotals(completed), { xp: 0, minutes: 0, sessions: 1 })
+  assert.deepEqual(getTotals(settleSession(restoreState(JSON.stringify(completed)), startTime + 1000)), getTotals(completed))
+  assert.equal(durationMs(0), 0)
+})
+
+for (const seconds of [1, 7, 30, 59, 61, 359]) test(`${seconds} second sessions restore and reward only scheduled time`, () => {
+  let state = reduceSession(initialState(), { type: 'duration', value: seconds / 60, custom: true }, startTime)
+  state = reduceSession(state, { type: 'start', id: `seconds-${seconds}` }, startTime)
+  assert.equal(state.active.expiresAt, startTime + seconds * 1000)
+  state = restoreState(JSON.stringify(state))
+  assert.equal(remainingMs(state, startTime), seconds * 1000)
+  assert.equal(settleSession(state, startTime + seconds * 1000 - 1), state)
+  state = settleSession(state, startTime + seconds * 1000)
+  assert.equal(getTotals(state).xp, seconds / 60 * 2)
+  assert.equal(restoreState(JSON.stringify(state)).history.length, 1)
+  assert.equal(getTotals(settleSession(state, startTime + 900_000)).xp, seconds / 60 * 2)
+})
+
+test('second-level pause/resume preserves the exact schedule and readable labels', () => {
+  let state = reduceSession({ ...initialState(), duration: 7 / 60 }, { type: 'start', id: 'seven' }, startTime)
+  state = reduceSession(state, { type: 'pause' }, startTime + 1500)
+  state = restoreState(JSON.stringify(state))
+  assert.equal(state.active.remainingMs, 5500)
+  state = reduceSession(state, { type: 'resume' }, startTime + 30_000)
+  assert.equal(state.active.expiresAt, startTime + 35_500)
+  assert.equal(formatDuration(61 / 60), '1m 1s')
+  assert.equal(formatDuration(25), '25 min')
+  assert.equal(formatXp(1 / 30), '0.03')
 })
 
 test('custom duration survives a paused reload and cannot change a running schedule', () => {

@@ -82,6 +82,8 @@ export function useFaceTracking(
   const [error, setError] = useState("");
   const [jumpscare, setJumpscare] = useState(false);
   const [calibrated, setCalibrated] = useState(false);
+  const [trackingWarning, setTrackingWarning] = useState("");
+  const [framesProcessed, setFramesProcessed] = useState(0);
 
   useEffect(() => {
     sessionRef.current = isSessionActive;
@@ -89,6 +91,8 @@ export function useFaceTracking(
     if (!isSessionActive) {
       awaySinceRef.current = null;
       alertedRef.current = false;
+      // Synchronize tracking UI with the session lifecycle without changing detection behavior.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAwaySeconds(0);
       setJumpscare(false);
     }
@@ -141,6 +145,8 @@ export function useFaceTracking(
     setAwaySeconds(0);
     setJumpscare(false);
     setError("");
+    setTrackingWarning("");
+    setFramesProcessed(0);
   }, [cleanup]);
 
   const startCamera = useCallback(async () => {
@@ -175,6 +181,7 @@ export function useFaceTracking(
       }
 
       streamRef.current = stream;
+      stream.getVideoTracks()[0]?.addEventListener("ended", stopCamera, { once: true });
 
       const video = videoRef.current;
 
@@ -208,22 +215,37 @@ export function useFaceTracking(
       setCameraOn(true);
 
       let lastVideoTime = -1;
+      let lastFrameAt = performance.now();
 
       intervalRef.current = setInterval(() => {
-        if (!modelRef.current || video.readyState < 2) {
-          return;
-        }
-
-        if (video.currentTime === lastVideoTime) {
+        if (!modelRef.current) return;
+        if (video.readyState < 2 || video.currentTime === lastVideoTime) {
+          if (performance.now() - lastFrameAt >= 3000) {
+            // An old pose must not remain a positive attention result when frames stop.
+            setTrackingWarning("Camera frames have stopped. Check your camera or restart it.");
+            currentPoseRef.current = null;
+            awaySinceRef.current = null;
+            alertedRef.current = false;
+            badFramesRef.current = 0;
+            goodFramesRef.current = 0;
+            setAwaySeconds(0);
+          }
           return;
         }
 
         lastVideoTime = video.currentTime;
-
-        const result = modelRef.current.detectForVideo(
-          video,
-          performance.now()
-        );
+        let result;
+        try {
+          result = modelRef.current.detectForVideo(video, performance.now());
+        } catch (trackingError) {
+          // Detection failures used to leave the previous direction visible indefinitely.
+          stopCamera();
+          setError(`Face tracking stopped: ${trackingError instanceof Error ? trackingError.message : 'unable to read camera frames'}. Enable the camera to retry.`);
+          return;
+        }
+        lastFrameAt = performance.now();
+        setTrackingWarning("");
+        setFramesProcessed(value => value + 1);
 
         const face = result.faceLandmarks[0];
         const matrix =
@@ -370,7 +392,7 @@ export function useFaceTracking(
         setLoading(false);
       }
     }
-  }, [cleanup]);
+  }, [cleanup, stopCamera]);
 
   const calibrate = useCallback(() => {
     const pose = currentPoseRef.current;
@@ -414,6 +436,8 @@ export function useFaceTracking(
     error,
     jumpscare,
     calibrated,
+    trackingWarning,
+    framesProcessed,
     startCamera,
     stopCamera,
     calibrate,
