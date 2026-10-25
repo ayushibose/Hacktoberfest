@@ -1,5 +1,5 @@
 # PomoGhost - Your Spooky Study Buddy (Halloween Edition)
-**PomoGhost** combines Pomodoro timers, a virtual pet and AI-powered screen analysis to make studying more productive and fun.
+**PomoGhost** combines Pomodoro timers, AI-powered screen analysis and face analysis, and a tamagotchi-style pet to make studying more productive and fun - halloween themed.
 
 ### Try it live : [PomoGhost](https://ayushibose.github.io/PomoGhost/)
 <img width="700" height="350" alt="image" src="https://github.com/user-attachments/assets/83ece6f0-a6ad-44ab-a96e-61b0c9fbdb8a" />
